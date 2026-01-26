@@ -135,7 +135,10 @@ rule all:
         # --- Specific, Targeted Reports ---
         expand(os.path.join(STATS_DIR, "targeted_comparisons_status", "{sample}.done"), sample=SAMPLES),
         expand(os.path.join(STATS_DIR, "contig_mappings_status", "{sample}.done"), sample=SAMPLES),
-        os.path.join(RESULTS_DIR, "report", "final_summary_report", "index.html")
+        os.path.join(RESULTS_DIR, "report", "final_summary_report", "index.html"),
+
+        # Trigger sample overview
+        os.path.join(STATS_DIR, "sample_overview.tsv")
 
 
 # ===================================================================
@@ -269,37 +272,72 @@ rule extract_target_reads:
         "awk '{{print $1}}' {input.ids} | sort -u > {output}.ids.txt 2> {log}; "
         "seqtk subseq {input.reads} {output}.ids.txt > {output} 2>> {log}"
 		
-# Step 5b: Calculate the percentage of reads kept after classification
-rule calculate_reads_leftover:
+rule create_sample_stats:
     input:
-        total_reads_file=os.path.join(QC_DIR, "{sample}.qc.fastq"),
-        target_reads_file=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+        raw_reads=expand(os.path.join(QC_DIR, "{sample}.merged.fastq"), sample=SAMPLES),
+        qc_reads=expand(os.path.join(QC_DIR, "{sample}.qc.fastq"), sample=SAMPLES),
+        target_reads=expand(os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq"), sample=SAMPLES)
     output:
-        os.path.join(STATS_DIR, "per_sample", "{sample}_reads_leftover_pct.txt")
+        tsv = os.path.join(STATS_DIR, "sample_overview.tsv")
     log:
-        os.path.join(LOG_DIR, "calculate_reads_leftover", "{sample}.log")
+        os.path.join(LOG_DIR, "sample_overview.log")
+    params:
+        sample_names = SAMPLES
+    threads:
+        config["params"]["threads"]
     shell:
         """
-        # Count lines in each file and divide by 4 to get the number of reads
-        total_reads=$( (wc -l < {input.total_reads_file} || true) | awk '{{print $1 / 4}}' )
-        target_reads=$( (wc -l < {input.target_reads_file} || true) | awk '{{print $1 / 4}}' )
+        # 1. Initialize file with header
+        echo -e "sample\\traw_count\\tqc_count\\ttarget_count\\ttarget_percent\\ttarget_avg_length" > {output.tsv}
 
-        # Use awk for safe floating-point arithmetic, even if counts are zero
-        awk -v target="$target_reads" -v total="$total_reads" \
-        'BEGIN {{ if (total > 0) {{ printf "%.2f", (target / total) * 100 }} else {{ print "0.00" }} }}' > {output} 2> {log}
-        """
+        # 2. Convert python lists to bash arrays
+        RAW_FILES=({input.raw_reads})
+        QC_FILES=({input.qc_reads})
+        TARGET_FILES=({input.target_reads})
+        SAMPLES=({params.sample_names})
 
-# Step 5c: calculate average read length
-rule calculate_mean_length:
-    input:
-        target_reads_file=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
-    output:
-        os.path.join(STATS_DIR, "per_sample", "{sample}_mean_read_length.txt")
-    log:
-        os.path.join(LOG_DIR, "calculate_mean_readlength", "{sample}.log")
-    shell:
-        """
-        awk '{{if(NR%4==2){{count++; bases += length}}}} END{{if (count > 0) printf "%.0f", bases/count; else print "0"}}' {input.target_reads_file} > {output} 2> {log}
+        # 3. Loop through indices
+        for i in "${{!SAMPLES[@]}}"; do
+            
+            sample="${{SAMPLES[$i]}}"
+            raw_f="${{RAW_FILES[$i]}}"
+            qc_f="${{QC_FILES[$i]}}"
+            target_f="${{TARGET_FILES[$i]}}"
+
+            # --- Calculations ---
+
+            # Raw Count (wc -l / 4)
+            raw_lines=$(wc -l < "$raw_f" || echo 0)
+            raw_count=$((raw_lines / 4))
+
+            # QC Count
+            qc_lines=$(wc -l < "$qc_f" || echo 0)
+            qc_count=$((qc_lines / 4))
+
+            # Target Stats (seqkit)
+            # -T: Tabular, tail -n+2 skips header
+            target_stats=$(seqkit stats -T -j {threads} "$target_f" 2>> {log} | tail -n+2)
+            
+            if [ -z "$target_stats" ]; then
+                target_count=0
+                target_avg_len=0
+            else
+                target_count=$(echo "$target_stats" | cut -f 4)
+                target_avg_len=$(echo "$target_stats" | cut -f 7 | cut -d'.' -f 1)
+            fi
+
+            # Calculate Percentage
+            # NOTE: Double braces {{ }} are required for awk inside Snakemake shell blocks!
+            if [ "$raw_count" -gt 0 ]; then
+                target_percent=$(awk -v t="$target_count" -v r="$raw_count" 'BEGIN {{printf "%.2f", (t/r)*100}}')
+            else
+                target_percent="0.00"
+            fi
+
+            # 4. Append row to output
+            echo -e "${{sample}}\\t${{raw_count}}\\t${{qc_count}}\\t${{target_count}}\\t${{target_percent}}\\t${{target_avg_len}}" >> {output.tsv}
+
+        done 2>> {log}
         """
 
 # --- ASSEMBLY RULES ---
