@@ -11,12 +11,9 @@ rule generate_quarto_report:
         per_sample_assemblies=expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_assembly_summary.csv"), sample=SAMPLES, assembly_type=ASSEMBLY_TYPES),
         per_sample_checkv_summaries=expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_checkv_summary.csv"), sample=SAMPLES, assembly_type=ASSEMBLY_TYPES),
         per_sample_miuvig_summaries=expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_miuvig_summary.csv"), sample=SAMPLES, assembly_type=ASSEMBLY_TYPES),
-        per_sample_read_pcts=expand(os.path.join(STATS_DIR, "per_sample", "{sample}_reads_leftover_pct.txt"), sample=SAMPLES),
-        per_sample_mean_lengths=expand(os.path.join(STATS_DIR, "per_sample", "{sample}_mean_read_length.txt"), sample=SAMPLES),
-
-        # --- Raw Data Files (for on-the-fly calculations in the run block) ---
-        qc_reads=expand(os.path.join(QC_DIR, "{sample}.qc.fastq"), sample=SAMPLES),
-        target_reads=expand(os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq"), sample=SAMPLES),
+        
+        # --- New Consolidated Stats Input ---
+        sample_overview=os.path.join(STATS_DIR, "sample_overview.tsv"),
 
         # --- Checkpoint / Flag Files (to ensure upstream rules are complete) ---
         # targeted_comparisons_done=os.path.join(STATS_DIR, "all_targeted_comparisons.done")
@@ -36,26 +33,7 @@ rule generate_quarto_report:
         import shutil
         from pathlib import Path
         import re
-        import gzip
-
-        # --- Helper function to count reads ---
-        def count_fastq_reads(filepath):
-            """
-            Efficiently counts reads in a FASTQ file, handling both .gz and plain text.
-            Reads the file in chunks to be memory-efficient and fast.
-            """
-            # Choose the correct open function based on file extension
-            _open = gzip.open if str(filepath).endswith(".gz") else open
-            
-            # Open in binary mode ('rb') for speed
-            with _open(filepath, "rb") as f:
-                # Create a generator to read the file in 1MB chunks
-                buf_gen = iter(lambda: f.read(1024 * 1024), b"")
-                # Sum the count of newline characters in each chunk
-                line_count = sum(buf.count(b"\n") for buf in buf_gen)
-            
-            # Each FASTQ record has 4 lines
-            return line_count // 4
+        import csv
 
         # --- Helper to sanitize names for IDs/filenames ---
         def sanitize(name):
@@ -67,6 +45,14 @@ rule generate_quarto_report:
         # Load the new child template containing the R code
         with open("templates/quast_child_template.qmd", 'r') as f:
             child_template_str = f.read()
+
+        # --- Parse Sample Overview TSV ---
+        # Structure: sample, raw_count, qc_count, target_count, target_percent, target_avg_length
+        stats_dict = {}
+        with open(input.sample_overview, 'r') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            for row in reader:
+                stats_dict[row['sample']] = row
         
         # --- Setup Temp Directory ---
         if os.path.exists(params.temp_quarto_src):
@@ -129,29 +115,27 @@ rule generate_quarto_report:
         chapter_files = ["index.qmd"]
 
         # --- Generate Sample Chapters ---
-        for i, sample in enumerate(SAMPLES):
+        for sample in SAMPLES:
             chapter_filename = f"sample_{sample}.qmd"
             chapter_files.append(chapter_filename)
             
-            # 1. Gather basic stats
-            with open(input.per_sample_read_pcts[i], 'r') as f: reads_leftover_pct = f.read().strip()
-            with open(input.per_sample_mean_lengths[i], 'r') as f: mean_read_length = f.read().strip()
-
-            total_read_count = count_fastq_reads(input.qc_reads[i])
-            target_read_count = count_fastq_reads(input.target_reads[i])
+            # 1. Gather basic stats from parsed TSV dictionary
+            if sample not in stats_dict:
+                 raise ValueError(f"Sample {sample} missing from sample_overview.tsv")
+            
+            s_stats = stats_dict[sample]
             
             # 2. Format main template
-            # The template no longer needs specific filenames, just the sample name
+            # Note: We cast counts to int to apply comma formatting (e.g. 10,000)
             chapter_content = main_template_str.format(
                 sample_name=sample,
-                total_read_count=f"{total_read_count:,}",
-                target_read_count=f"{target_read_count:,}",
-                reads_leftover_pct=reads_leftover_pct,
-                mean_read_length=mean_read_length
+                total_read_count=f"{int(s_stats['qc_count']):,}", 
+                target_read_count=f"{int(s_stats['target_count']):,}",
+                reads_leftover_pct=s_stats['target_percent'],
+                mean_read_length=s_stats['target_avg_length']
             )
 
             # 3. Find and Process Dynamic QUAST Results
-            # (Logic largely unchanged, just ensure unique filenames)
             any_reports_exist = False
             for a_type in ASSEMBLY_TYPES:
                  if glob.glob(os.path.join(STATS_DIR, "targeted_quast", a_type, sample, "*", "report.tsv")):
