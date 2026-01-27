@@ -124,6 +124,8 @@ rule all:
 
         # Some temporary outputs until we fix the final report, then these will become obsolete
         # BENCHMARK/ASSEMBLY-STATS
+        
+        # I should be able to disable these individual files and only rely on index.html
         expand(os.path.join(RESULTS_DIR, "report", "{assembly_type}", "benchmark_summary.csv"), assembly_type=["primary", "secondary", "final"]),
         expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_benchmark_summary.csv"), assembly_type=["primary", "secondary", "final"], sample=SAMPLES),
         # CHECKV
@@ -137,8 +139,11 @@ rule all:
         expand(os.path.join(STATS_DIR, "contig_mappings_status", "{sample}.done"), sample=SAMPLES),
         os.path.join(RESULTS_DIR, "report", "final_summary_report", "index.html"),
 
+        # Force viral counts
+        expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_total_viral_genes.csv"), assembly_type=["primary", "secondary", "final"], sample=SAMPLES),
         # Trigger sample overview
-        os.path.join(STATS_DIR, "sample_overview.tsv")
+        os.path.join(STATS_DIR, "sample_overview.tsv"),
+        os.path.join(STATS_DIR, "assembly_overview.tsv")
 
 
 # ===================================================================
@@ -760,15 +765,189 @@ rule summarize_benchmarks_generic:
             shell(f"({cmd}) > {os.path.abspath(str(log))} 2>&1")
             
             # 6. Move the generated files from temp_dir to final destinations
-            # Move Global Summaries
             shell(f"mv {temp_dir}/benchmark_summary.csv {output.benchmark_csv}")
             shell(f"mv {temp_dir}/assembly_summary.csv {output.assembly_csv}")
             
-            # Move Per-Sample Summaries
-            # We use '|| true' to avoid failure if the script didn't generate a specific sample file (e.g. empty inputs)
+            # Use '|| true' to avoid failure if the script didn't generate a specific sample file (e.g. empty inputs)
             shell(f"mv {temp_dir}/*_benchmark_summary.csv {abs_out_sample}/ 2>/dev/null || true")
             shell(f"mv {temp_dir}/*_assembly_summary.csv {abs_out_sample}/ 2>/dev/null || true")
 		
+
+rule count_viral_genes:
+    input:
+        # Use list comprehension to guarantee order matches ACTIVE_ASSEMBLERS
+        files = lambda wildcards: [
+            os.path.join(STATS_DIR, "checkv", wildcards.assembly_type, f"{wildcards.sample}_{assembler}", "quality_summary.tsv")
+            for assembler in ACTIVE_ASSEMBLERS
+        ]
+    output:
+        csv = os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_total_viral_genes.csv")
+    params:
+        # Pass the list of assemblers to shell
+        assemblers = ACTIVE_ASSEMBLERS
+    log:
+        os.path.join(LOG_DIR, "count_viral_genes", "{assembly_type}", "{sample}.log")
+    shell:
+        """
+        # 1. Initialize Output CSV
+        echo "assembler,viral_genes" > {output.csv}
+
+        # 2. Setup Arrays
+        # Snakemake converts the input list and param list to space-separated strings
+        FILES=({input.files})
+        ASSEMBLERS=({params.assemblers})
+
+        # 3. Loop through assemblers
+        for i in "${{!ASSEMBLERS[@]}}"; do
+            
+            assembler="${{ASSEMBLERS[$i]}}"
+            file="${{FILES[$i]}}"
+            
+            # 4. Calculate Sum using Awk
+            # Logic:
+            # - NR==1: Scan header to find which column number corresponds to "viral_genes"
+            # - NR>1: If we found the column, add the value to 'sum'
+            # - END: Print sum+0 (forces result to be 0 if 'sum' is uninitialized/empty)
+            
+            count=$(awk -F'\\t' '
+                NR==1 {{
+                    for(j=1; j<=NF; j++) {{
+                        if($j == "viral_genes") col=j
+                    }}
+                }}
+                NR>1 && col {{
+                    sum += $col
+                }}
+                END {{
+                    print sum+0
+                }}
+            ' "$file" 2>> {log})
+
+            # 5. Write row
+            echo "${{assembler}},${{count}}" >> {output.csv}
+
+        done
+        """
+
+rule create_assembly_overview:
+    input:
+        assembly_summaries = expand(
+            os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_assembly_summary.csv"),
+            sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
+        ),
+        benchmark_summaries = expand(
+            os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_benchmark_summary.csv"),
+            sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
+        ),
+        viral_gene_counts = expand(
+            os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_total_viral_genes.csv"),
+            sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
+        )
+    output:
+        tsv = os.path.join(STATS_DIR, "assembly_overview.tsv")
+    log:
+        os.path.join(LOG_DIR, "create_assembly_overview.log")
+    run:
+        import csv
+        import os
+
+        # --- Helper: Convert Minutes float to HH:MM:SS string ---
+        def min_to_hms(val):
+            try:
+                minutes = float(val)
+                seconds = int(minutes * 60)
+                m, s = divmod(seconds, 60)
+                h, m = divmod(m, 60)
+                return f"{h:02d}:{m:02d}:{s:02d}"
+            except (ValueError, TypeError):
+                return "00:00:00"
+
+        # --- Helper: Safe Float conversion for CSV reading ---
+        def get_val(row, key, default="0"):
+            return row.get(key, default)
+
+        # Define Output Headers
+        headers = [
+            "assembly_type", "assembler", "sample", 
+            "# Contigs", "Total length (bp)", "N50 (bp)", "L50 (bp)", "Largest contig (bp)",
+            "Elapsed time (h:m:s)", "Maximum memory (GB)", 
+            "Total viral genes", "Reads mapped (%)"
+        ]
+
+        with open(output.tsv, 'w', newline='') as out_f:
+            writer = csv.DictWriter(out_f, fieldnames=headers, delimiter='\t')
+            writer.writeheader()
+
+            # Iterate through every combination of Type and Sample
+            for a_type in ASSEMBLY_TYPES:
+                for sample in SAMPLES:
+                    
+                    # 1. Define paths for this specific sample/type combo
+                    base_dir = os.path.join(STATS_DIR, "per_sample", a_type)
+                    
+                    f_assembly = os.path.join(base_dir, f"{sample}_assembly_summary.csv")
+                    f_benchmark = os.path.join(base_dir, f"{sample}_benchmark_summary.csv")
+                    f_genes = os.path.join(base_dir, f"{sample}_total_viral_genes.csv")
+
+                    # 2. Load Viral Genes into a dict: {assembler: count}
+                    genes_map = {}
+                    if os.path.exists(f_genes):
+                        with open(f_genes, 'r') as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                # The rule 'count_viral_genes' uses column 'assembler'
+                                key = row.get('assembler') or row.get('process')
+                                genes_map[key] = row['viral_genes']
+
+                    # 3. Load Benchmarks into a dict: {assembler: {time, mem}}
+                    bench_map = {}
+                    if os.path.exists(f_benchmark):
+                        with open(f_benchmark, 'r') as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                proc = row['process']
+                                # Filter out non-assembler steps immediately
+                                if proc == "classify_reads_diamond":
+                                    continue
+                                bench_map[proc] = {
+                                    'time': row.get('Run Time (minutes)', '0'),
+                                    'mem': row.get('Peak Memory (GB)', '0')
+                                }
+
+                    # 4. Read Assembly Stats (Main Loop) and Merge
+                    if os.path.exists(f_assembly):
+                        with open(f_assembly, 'r') as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                assembler = row['process']
+                                
+                                # Skip non-assemblers if they appear here too
+                                if assembler == "classify_reads_diamond":
+                                    continue
+
+                                # Retrieve auxiliary data
+                                b_stats = bench_map.get(assembler, {'time': '0', 'mem': '0'})
+                                v_genes = genes_map.get(assembler, '0')
+
+                                # Prepare Output Row
+                                out_row = {
+                                    "assembly_type": a_type,
+                                    "assembler": assembler,
+                                    "sample": sample,
+                                    "# Contigs": get_val(row, '# Contigs'),
+                                    "Total length (bp)": get_val(row, 'Total Length (bp)'),
+                                    "N50 (bp)": get_val(row, 'N50 (bp)'),
+                                    # Note: L50 wasn't in your provided example CSV, handling gracefully if missing
+                                    "L50 (bp)": get_val(row, 'L50 (bp)', "N/A"), 
+                                    "Largest contig (bp)": get_val(row, 'Largest Contig (bp)'),
+                                    "Elapsed time (h:m:s)": min_to_hms(b_stats['time']),
+                                    "Maximum memory (GB)": b_stats['mem'],
+                                    "Total viral genes": v_genes,
+                                    "Reads mapped (%)": get_val(row, 'Reads Mapped (%)')
+                                }
+                                
+                                writer.writerow(out_row)
+
 rule gather_versions:
      output:
         versions=os.path.join(RESULTS_DIR, "report", "versions.tsv")
