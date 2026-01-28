@@ -118,32 +118,16 @@ rule all:
         expand(os.path.join(STATS_DIR, "reads_to_contigs", "{assembly_type}", "{sample}_{assembler}.bam"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
         expand(os.path.join(STATS_DIR, "checkv", "{assembly_type}", "{sample}_{assembler}"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
         expand(os.path.join(ANNOTATION_DIR, "{assembly_type}", "{sample}", "post_processed", "{assembler}_annotated_contigs.tsv"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
-        
-        # Temporary rule to trigger rule combine_assemblies
-        # expand(os.path.join("results", "6_reassembly_stats", "contig_stats", "{sample}_{assembler}.stats.txt"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS),
-
-        # Some temporary outputs until we fix the final report, then these will become obsolete
-        # BENCHMARK/ASSEMBLY-STATS
-        
-        # I should be able to disable these individual files and only rely on index.html
-        expand(os.path.join(RESULTS_DIR, "report", "{assembly_type}", "benchmark_summary.csv"), assembly_type=["primary", "secondary", "final"]),
-        expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_benchmark_summary.csv"), assembly_type=["primary", "secondary", "final"], sample=SAMPLES),
-        # CHECKV
-        expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_checkv_summary.csv"), assembly_type=["primary", "secondary", "final"], sample=SAMPLES),
-        expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_miuvig_summary.csv"), assembly_type=["primary", "secondary", "final"], sample=SAMPLES),
-        expand(os.path.join(RESULTS_DIR, "report", "{assembly_type}", "checkv_global_summary.csv"), assembly_type=["primary", "secondary", "final"]),
-        expand(os.path.join(RESULTS_DIR, "report", "{assembly_type}", "miuvig_global_summary.csv"), assembly_type=["primary", "secondary", "final"]),
 
         # --- Specific, Targeted Reports ---
         expand(os.path.join(STATS_DIR, "targeted_comparisons_status", "{sample}.done"), sample=SAMPLES),
         expand(os.path.join(STATS_DIR, "contig_mappings_status", "{sample}.done"), sample=SAMPLES),
         os.path.join(RESULTS_DIR, "report", "final_summary_report", "index.html"),
 
-        # Force viral counts
-        expand(os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_total_viral_genes.csv"), assembly_type=["primary", "secondary", "final"], sample=SAMPLES),
-        # Trigger sample overview
+        # General overviews
         os.path.join(STATS_DIR, "sample_overview.tsv"),
-        os.path.join(STATS_DIR, "assembly_overview.tsv")
+        os.path.join(STATS_DIR, "assembly_overview.tsv"),
+        os.path.join(STATS_DIR, "accuracy_overview.tsv")
 
 
 # ===================================================================
@@ -277,78 +261,9 @@ rule extract_target_reads:
         "awk '{{print $1}}' {input.ids} | sort -u > {output}.ids.txt 2> {log}; "
         "seqtk subseq {input.reads} {output}.ids.txt > {output} 2>> {log}"
 		
-rule create_sample_stats:
-    input:
-        raw_reads=expand(os.path.join(QC_DIR, "{sample}.merged.fastq"), sample=SAMPLES),
-        qc_reads=expand(os.path.join(QC_DIR, "{sample}.qc.fastq"), sample=SAMPLES),
-        target_reads=expand(os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq"), sample=SAMPLES)
-    output:
-        tsv = os.path.join(STATS_DIR, "sample_overview.tsv")
-    log:
-        os.path.join(LOG_DIR, "sample_overview.log")
-    params:
-        sample_names = SAMPLES
-    threads:
-        config["params"]["threads"]
-    shell:
-        """
-        # 1. Initialize file with header
-        echo -e "sample\\traw_count\\tqc_count\\ttarget_count\\ttarget_percent\\ttarget_avg_length" > {output.tsv}
-
-        # 2. Convert python lists to bash arrays
-        RAW_FILES=({input.raw_reads})
-        QC_FILES=({input.qc_reads})
-        TARGET_FILES=({input.target_reads})
-        SAMPLES=({params.sample_names})
-
-        # 3. Loop through indices
-        for i in "${{!SAMPLES[@]}}"; do
-            
-            sample="${{SAMPLES[$i]}}"
-            raw_f="${{RAW_FILES[$i]}}"
-            qc_f="${{QC_FILES[$i]}}"
-            target_f="${{TARGET_FILES[$i]}}"
-
-            # --- Calculations ---
-
-            # Raw Count (wc -l / 4)
-            raw_lines=$(wc -l < "$raw_f" || echo 0)
-            raw_count=$((raw_lines / 4))
-
-            # QC Count
-            qc_lines=$(wc -l < "$qc_f" || echo 0)
-            qc_count=$((qc_lines / 4))
-
-            # Target Stats (seqkit)
-            # -T: Tabular, tail -n+2 skips header
-            target_stats=$(seqkit stats -T -j {threads} "$target_f" 2>> {log} | tail -n+2)
-            
-            if [ -z "$target_stats" ]; then
-                target_count=0
-                target_avg_len=0
-            else
-                target_count=$(echo "$target_stats" | cut -f 4)
-                target_avg_len=$(echo "$target_stats" | cut -f 7 | cut -d'.' -f 1)
-            fi
-
-            # Calculate Percentage
-            # NOTE: Double braces {{ }} are required for awk inside Snakemake shell blocks!
-            if [ "$raw_count" -gt 0 ]; then
-                target_percent=$(awk -v t="$target_count" -v r="$raw_count" 'BEGIN {{printf "%.2f", (t/r)*100}}')
-            else
-                target_percent="0.00"
-            fi
-
-            # 4. Append row to output
-            echo -e "${{sample}}\\t${{raw_count}}\\t${{qc_count}}\\t${{target_count}}\\t${{target_percent}}\\t${{target_avg_len}}" >> {output.tsv}
-
-        done 2>> {log}
-        """
-
 # --- ASSEMBLY RULES ---
 include: "rules/assemblers.smk"
 
-# run this every time for now
 rule combine_assemblies:
     input:
         lambda wildcards: expand(
@@ -485,7 +400,6 @@ checkpoint bin_contigs_by_taxonomy:
         done > {log} 2>&1
         """
 
-
 rule aggregate_targeted_comparisons:
     input:
         get_sample_quast_comparisons
@@ -507,7 +421,8 @@ rule targeted_quast_comparison:
     output:
         report=os.path.join(STATS_DIR, "targeted_quast", "{assembly_type}", "{sample}", "{virus}", "report.html"),
         out_dir=directory(os.path.join(STATS_DIR, "targeted_quast", "{assembly_type}",  "{sample}", "{virus}")),
-        transposed=os.path.join(STATS_DIR, "targeted_quast", "{assembly_type}", "{sample}", "{virus}", "transposed_report.tsv")
+        transposed=os.path.join(STATS_DIR, "targeted_quast", "{assembly_type}", "{sample}", "{virus}", "transposed_report.tsv"),
+        misassemblies=os.path.join(STATS_DIR, "targeted_quast", "{assembly_type}", "{sample}", "{virus}", "contigs_reports", "transposed_report_misassemblies.tsv")
     params:
         reference=lambda wildcards: config["viruses_of_interest"][wildcards.virus]
     threads:
@@ -545,17 +460,16 @@ rule targeted_quast_comparison:
                 # If QUAST fails (e.g. exit code 4 because NO "good" contigs were found),
                 # log it and create dummy files so the pipeline proceeds.
                 shell("echo 'QUAST crashed or found no valid contigs. Creating placeholder files.' >> {log}")
-                shell("mkdir -p {output.out_dir}")
-                shell("touch {output.report} {output.transposed}")	
+                shell("mkdir -p {output.out_dir}/contigs_reports")
+                shell("touch {output.report} {output.transposed} {output.misassemblies}")	
         else:
             # Fallback
-            shell("mkdir -p {output.out_dir} && touch {output.report} && touch {output.transposed}")
+            shell("mkdir -p {output.out_dir}/contigs_reports && touch {output.report} && touch {output.transposed} && touch {output.misassemblies}")
 			
 
 # Step 11: Calculate assembly statistics
 rule calculate_stats_generic:
     input:
-        # get_assembly_fasta (outdated :D)
         get_assembly_by_type
     output:
         os.path.join(STATS_DIR, "contig_stats", "{assembly_type}", "{sample}_{assembler}.stats.txt")
@@ -715,7 +629,7 @@ rule summarize_benchmarks_generic:
             # LOGIC: Add diamond only if type is 'primary', otherwise just use assemblers
             process=(["classify_reads_diamond"] + ACTIVE_ASSEMBLERS) if w.assembly_type == "primary" else ACTIVE_ASSEMBLERS
         ),
-        # Fix: Pass wildcard string "{assembly_type}" to expand, do NOT use os.path.join keywords
+        # Pass wildcard string "{assembly_type}" to expand, do NOT use os.path.join keywords
         assembly_stats=expand(
             os.path.join(STATS_DIR, "contig_stats", "{assembly_type}", "{sample}_{assembler}.stats.txt"), 
             sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type="{assembly_type}"
@@ -725,7 +639,6 @@ rule summarize_benchmarks_generic:
             sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type="{assembly_type}"
         )
     output:
-        # Fix: Removed invalid keywords inside os.path.join
         benchmark_csv=os.path.join(RESULTS_DIR, "report", "{assembly_type}", "benchmark_summary.csv"),
         assembly_csv=os.path.join(RESULTS_DIR, "report", "{assembly_type}", "assembly_summary.csv"),
         # Per-sample files
@@ -793,7 +706,6 @@ rule count_viral_genes:
         echo "assembler,viral_genes" > {output.csv}
 
         # 2. Setup Arrays
-        # Snakemake converts the input list and param list to space-separated strings
         FILES=({input.files})
         ASSEMBLERS=({params.assemblers})
 
@@ -829,125 +741,6 @@ rule count_viral_genes:
         done
         """
 
-rule create_assembly_overview:
-    input:
-        assembly_summaries = expand(
-            os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_assembly_summary.csv"),
-            sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
-        ),
-        benchmark_summaries = expand(
-            os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_benchmark_summary.csv"),
-            sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
-        ),
-        viral_gene_counts = expand(
-            os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_total_viral_genes.csv"),
-            sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
-        )
-    output:
-        tsv = os.path.join(STATS_DIR, "assembly_overview.tsv")
-    log:
-        os.path.join(LOG_DIR, "create_assembly_overview.log")
-    run:
-        import csv
-        import os
-
-        # --- Helper: Convert Minutes float to HH:MM:SS string ---
-        def min_to_hms(val):
-            try:
-                minutes = float(val)
-                seconds = int(minutes * 60)
-                m, s = divmod(seconds, 60)
-                h, m = divmod(m, 60)
-                return f"{h:02d}:{m:02d}:{s:02d}"
-            except (ValueError, TypeError):
-                return "00:00:00"
-
-        # --- Helper: Safe Float conversion for CSV reading ---
-        def get_val(row, key, default="0"):
-            return row.get(key, default)
-
-        # Define Output Headers
-        headers = [
-            "assembly_type", "assembler", "sample", 
-            "# Contigs", "Total length (bp)", "N50 (bp)", "L50 (bp)", "Largest contig (bp)",
-            "Elapsed time (h:m:s)", "Maximum memory (GB)", 
-            "Total viral genes", "Reads mapped (%)"
-        ]
-
-        with open(output.tsv, 'w', newline='') as out_f:
-            writer = csv.DictWriter(out_f, fieldnames=headers, delimiter='\t')
-            writer.writeheader()
-
-            # Iterate through every combination of Type and Sample
-            for a_type in ASSEMBLY_TYPES:
-                for sample in SAMPLES:
-                    
-                    # 1. Define paths for this specific sample/type combo
-                    base_dir = os.path.join(STATS_DIR, "per_sample", a_type)
-                    
-                    f_assembly = os.path.join(base_dir, f"{sample}_assembly_summary.csv")
-                    f_benchmark = os.path.join(base_dir, f"{sample}_benchmark_summary.csv")
-                    f_genes = os.path.join(base_dir, f"{sample}_total_viral_genes.csv")
-
-                    # 2. Load Viral Genes into a dict: {assembler: count}
-                    genes_map = {}
-                    if os.path.exists(f_genes):
-                        with open(f_genes, 'r') as f:
-                            reader = csv.DictReader(f)
-                            for row in reader:
-                                # The rule 'count_viral_genes' uses column 'assembler'
-                                key = row.get('assembler') or row.get('process')
-                                genes_map[key] = row['viral_genes']
-
-                    # 3. Load Benchmarks into a dict: {assembler: {time, mem}}
-                    bench_map = {}
-                    if os.path.exists(f_benchmark):
-                        with open(f_benchmark, 'r') as f:
-                            reader = csv.DictReader(f)
-                            for row in reader:
-                                proc = row['process']
-                                # Filter out non-assembler steps immediately
-                                if proc == "classify_reads_diamond":
-                                    continue
-                                bench_map[proc] = {
-                                    'time': row.get('Run Time (minutes)', '0'),
-                                    'mem': row.get('Peak Memory (GB)', '0')
-                                }
-
-                    # 4. Read Assembly Stats (Main Loop) and Merge
-                    if os.path.exists(f_assembly):
-                        with open(f_assembly, 'r') as f:
-                            reader = csv.DictReader(f)
-                            for row in reader:
-                                assembler = row['process']
-                                
-                                # Skip non-assemblers if they appear here too
-                                if assembler == "classify_reads_diamond":
-                                    continue
-
-                                # Retrieve auxiliary data
-                                b_stats = bench_map.get(assembler, {'time': '0', 'mem': '0'})
-                                v_genes = genes_map.get(assembler, '0')
-
-                                # Prepare Output Row
-                                out_row = {
-                                    "assembly_type": a_type,
-                                    "assembler": assembler,
-                                    "sample": sample,
-                                    "# Contigs": get_val(row, '# Contigs'),
-                                    "Total length (bp)": get_val(row, 'Total Length (bp)'),
-                                    "N50 (bp)": get_val(row, 'N50 (bp)'),
-                                    # Note: L50 wasn't in your provided example CSV, handling gracefully if missing
-                                    "L50 (bp)": get_val(row, 'L50 (bp)', "N/A"), 
-                                    "Largest contig (bp)": get_val(row, 'Largest Contig (bp)'),
-                                    "Elapsed time (h:m:s)": min_to_hms(b_stats['time']),
-                                    "Maximum memory (GB)": b_stats['mem'],
-                                    "Total viral genes": v_genes,
-                                    "Reads mapped (%)": get_val(row, 'Reads Mapped (%)')
-                                }
-                                
-                                writer.writerow(out_row)
-
 rule gather_versions:
      output:
         versions=os.path.join(RESULTS_DIR, "report", "versions.tsv")
@@ -960,6 +753,9 @@ rule gather_versions:
         conda list --fields name,version,channel_name | grep -E "flye|canu|raven|plass|myloasm|metamdbg|wtdbg|shasta|miniasm|diamond" | awk '{{print $1, $2, $3}}'
         }} > {output.versions}
         """
+
+# --- CREATE OVERVIEW TABLES ---
+include: "rules/overview_tables.smk"
 
 # --- QUARTO BOOK GENERATION ---
 include: "rules/generate_report.smk"
