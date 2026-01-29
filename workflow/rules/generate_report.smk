@@ -20,7 +20,7 @@ rule generate_quarto_report:
         targeted_comparisons_done=expand(os.path.join(STATS_DIR, "targeted_comparisons_status", "{sample}.done"), sample=SAMPLES),
 
         # --- Configuration & Metadata Files ---
-        config_file="config/lovimab.yaml",
+        config_file="config/virbench.yaml",
         software_versions=os.path.join(RESULTS_DIR, "report", "versions.tsv")
     output:
         os.path.join(RESULTS_DIR, "report", "final_summary_report", "index.html")
