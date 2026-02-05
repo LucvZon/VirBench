@@ -49,13 +49,29 @@ def create_taxon_dict():
     '''Download and create taxon dictionary'''
     logging.info("Downloading new_taxdump..")
   
-    _, temp = tempfile.mkstemp()
+    fd, temp = tempfile.mkstemp()
+    os.close(fd) # Close the file descriptor immediately to avoid leaks
 
-    subprocess.run(['rsync','rsync://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.tar.gz',temp], stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL)
-    
+    # Use wget with HTTPS instead of rsync
+    try:
+        subprocess.run(
+            ['wget', '-O', temp, 'https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.tar.gz'], 
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL, 
+            check=True
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Fallback to curl if wget is missing
+        logging.info("wget failed or missing, trying curl...")
+        subprocess.run(
+            ['curl', '-o', temp, 'https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.tar.gz'], 
+            check=True
+        )
+
     logging.info("Creating taxon dictionary..")
 
     taxon_dict = {}
+    
     with tarfile.open(temp, "r:gz") as tar:
         for line in tar.extractfile("rankedlineage.dmp"):
             line = line.decode().strip().replace('\t','').split('|')
@@ -183,6 +199,13 @@ def parse_diamond(infile, outfile, total):
                         print(contig.format(), file = outfile)
                 contig = contig_annotation(contig_id)
                 contig.add_annotation(line_split)
+        
+        # Flush last contig after loop    
+        if contig.contig_id is not None:
+            output = contig.format()
+            if output is not None:
+                print(output, file = outfile)           
+
     return(annotated_set)
 
 if __name__ == "__main__":
