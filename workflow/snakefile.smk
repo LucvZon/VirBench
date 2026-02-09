@@ -386,18 +386,18 @@ checkpoint bin_contigs_by_taxonomy:
         # Ensure the output directory exists
         mkdir -p {output.binned_dir}
 
-        # Read the annotation file line by line (skipping the header)
-        tail -n +2 {input.annotation} | while IFS=$'\\t' read -r -a line; do
+        # Read the annotation file line by line
+        while IFS=$'\\t' read -r -a line; do
             contig_id="${{line[{params.contig_col}-1]}}"
             
-            # Sanitize the species name to create a valid filename (e.g., "Human alphaherpesvirus 1" -> "Human_alphaherpesvirus_1.fasta")
+            # Sanitize the species name
             species_name=$(echo "${{line[{params.species_col}-1]}}" | sed 's/ /_/g; s/[^a-zA-Z0-9_.-]//g')
             
-            # If the species name is not empty, extract the contig and append it to the corresponding species FASTA file
+            # If the species name is not empty, extract the contig
             if [[ -n "$species_name" ]]; then
                 seqtk subseq {input.contigs} <(echo "$contig_id") >> {output.binned_dir}/$species_name.fasta
             fi
-        done > {log} 2>&1
+        done < {input.annotation}
         """
 
 rule aggregate_targeted_comparisons:
