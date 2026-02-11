@@ -684,11 +684,10 @@ rule summarize_benchmarks_generic:
             # Use '|| true' to avoid failure if the script didn't generate a specific sample file (e.g. empty inputs)
             shell(f"mv {temp_dir}/*_benchmark_summary.csv {abs_out_sample}/ 2>/dev/null || true")
             shell(f"mv {temp_dir}/*_assembly_summary.csv {abs_out_sample}/ 2>/dev/null || true")
-		
 
 rule count_viral_genes:
     input:
-        # Use list comprehension to guarantee order matches ACTIVE_ASSEMBLERS
+        # Use quality_summary as the flag that CheckV finished
         files = lambda wildcards: [
             os.path.join(STATS_DIR, "checkv", wildcards.assembly_type, f"{wildcards.sample}_{assembler}", "quality_summary.tsv")
             for assembler in ACTIVE_ASSEMBLERS
@@ -696,50 +695,53 @@ rule count_viral_genes:
     output:
         csv = os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_total_viral_genes.csv")
     params:
-        # Pass the list of assemblers to shell
         assemblers = ACTIVE_ASSEMBLERS
     log:
         os.path.join(LOG_DIR, "count_viral_genes", "{assembly_type}", "{sample}.log")
-    shell:
-        """
-        # 1. Initialize Output CSV
-        echo "assembler,viral_genes" > {output.csv}
-
-        # 2. Setup Arrays
-        FILES=({input.files})
-        ASSEMBLERS=({params.assemblers})
-
-        # 3. Loop through assemblers
-        for i in "${{!ASSEMBLERS[@]}}"; do
+    run:
+        import os
+        import pandas as pd
+        
+        results = []
+        
+        for assembler, summary_file in zip(params.assemblers, input.files):
+            base_dir = os.path.dirname(summary_file)
+            features_file = os.path.join(base_dir, "tmp", "gene_features.tsv")
             
-            assembler="${{ASSEMBLERS[$i]}}"
-            file="${{FILES[$i]}}"
+            unique_viral_genes = set()
             
-            # 4. Calculate Sum using Awk
-            # Logic:
-            # - NR==1: Scan header to find which column number corresponds to "viral_genes"
-            # - NR>1: If we found the column, add the value to 'sum'
-            # - END: Print sum+0 (forces result to be 0 if 'sum' is uninitialized/empty)
-            
-            count=$(awk -F'\\t' '
-                NR==1 {{
-                    for(j=1; j<=NF; j++) {{
-                        if($j == "viral_genes") col=j
-                    }}
-                }}
-                NR>1 && col {{
-                    sum += $col
-                }}
-                END {{
-                    print sum+0
-                }}
-            ' "$file" 2>> {log})
+            # Check if features file exists (it might not if CheckV crashed/dummy files used)
+            if os.path.exists(features_file):
+                try:
+                    df = pd.read_csv(features_file, sep='\t')
+                    
+                    # Ensure required columns exist
+                    if 'hmm_cat' in df.columns and 'hmm_name' in df.columns:
+                        
+                        # FILTERING LOGIC:
+                        # 1. hmm_cat > 0  -> This identifies the gene as Viral
+                        # 2. hmm_name is valid -> Drop NAs
+                        
+                        viral_rows = df[df['hmm_cat'] > 0]
+                        
+                        # Add valid names to the set (automatically handles uniqueness)
+                        for name in viral_rows['hmm_name'].dropna():
+                            unique_viral_genes.add(str(name))
+                            
+                except Exception as e:
+                    with open(log[0], "a") as l:
+                        l.write(f"Error processing {assembler}: {e}\n")
+            else:
+                with open(log[0], "a") as l:
+                    l.write(f"Features file not found for {assembler}\n")
 
-            # 5. Write row
-            echo "${{assembler}},${{count}}" >> {output.csv}
-
-        done
-        """
+            # Append count to results
+            results.append({'assembler': assembler, 'viral_genes': len(unique_viral_genes)})
+        
+        # Write to CSV
+        out_df = pd.DataFrame(results)
+        out_df = out_df[['assembler', 'viral_genes']]
+        out_df.to_csv(output.csv, index=False)
 
 rule gather_versions:
      output:
