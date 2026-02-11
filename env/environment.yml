@@ -18,6 +18,7 @@ dependencies:
   - bioconda::raven-assembler
   - bioconda::miniasm
   - bioconda::racon
+  - bioconda::gfatools
   - bioconda::snakemake
   - bioconda::canu
   - bioconda::mmseqs2
