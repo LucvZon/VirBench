@@ -17,6 +17,8 @@ dependencies:
   - bioconda::bbmap==39.33
   - bioconda::checkv==1.0.1
   - bioconda::raven-assembler==1.8.3
+  - bioconda::miniasm==0.3
+  - bioconda::racon==1.5.0
   - bioconda::snakemake==9.10.1
   - bioconda::canu==2.3
   - bioconda::mmseqs2==18.8cc5c
