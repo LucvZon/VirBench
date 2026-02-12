@@ -30,20 +30,22 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "metaflye")),
-            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "metaflye", "assembly.fasta")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "metaflye", "assembly.fasta"),
+            bench=os.path.join(BENCH_DIR, "secondary", "metaflye", "{sample}.tsv")
         threads:
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "metaflye", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "metaflye", "{sample}.log")
         shell:
             """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             (flye --nano-raw {input} --meta --min-overlap 1000 -o {output.dir} --threads {threads} &> {log}) \
             || \
             (echo "Flye failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
              mkdir -p {output.dir} && \
              touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -52,7 +54,8 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "penguin", "contigs.fasta"),
-            tmp_dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "penguin", "temp_files"))
+            tmp_dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "penguin", "temp_files")),
+            bench=os.path.join(BENCH_DIR, "secondary", "penguin", "{sample}.tsv")
         params:
             min_len=config["params"]["penguin_min_contig_len"],
             min_id=config["params"]["penguin_min_seq_id"]
@@ -60,16 +63,17 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             config["params"]["threads"]		
         log:
             os.path.join(LOG_DIR, "secondary", "penguin", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "penguin", "{sample}.log")
         shell:
             """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             (penguin nuclassemble {input} {output.fasta} {output.tmp_dir} \
             --min-contig-len {params.min_len} --min-seq-id {params.min_id} \
             --threads {threads} &> {log}) \
             || \
             (echo "PenguiN failed for sample {wildcards.sample}, creating empty output." >> {log} && \
              touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -77,20 +81,22 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
         input:
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
-            os.path.join(REASSEMBLY_DIR, "{sample}", "raven", "assembly.fasta")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "raven", "assembly.fasta"),
+            bench=os.path.join(BENCH_DIR, "secondary", "raven", "{sample}.tsv")
         threads:
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "raven", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "raven", "{sample}.log")
         shell:
             """
-            (raven --threads {threads} -p 2 {input} > {output} 2> {log}
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
+            (raven --threads {threads} -p 2 {input} > {output.fasta} 2> {log}
             rm raven.cereal) \
             || \
             (echo "Raven failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
-             touch {output})
+             touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -99,7 +105,8 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "canu")),
-            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "canu", "canu_assembly.contigs.fasta")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "canu", "canu_assembly.contigs.fasta"),
+            bench=os.path.join(BENCH_DIR, "secondary", "canu", "{sample}.tsv")
         params:
             genome_size=config["params"]["canu_genome_size"],
             # A good rule of thumb: 4GB of memory per thread for Canu
@@ -108,10 +115,10 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "canu", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "canu", "{sample}.log")
         shell:
             """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             (canu -assemble -corrected \
             -p canu_assembly \
             -d {output.dir} \
@@ -124,6 +131,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             (echo "Canu failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
              mkdir -p {output.dir} && \
              touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -132,7 +140,8 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "myloasm")),
-            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "myloasm", "assembly_primary.fa")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "myloasm", "assembly_primary.fa"),
+            bench=os.path.join(BENCH_DIR, "secondary", "myloasm", "{sample}.tsv")
         params:
             min_reads=config["params"]["myloasm_min_reads"],
             min_overlap=config["params"]["myloasm_min_overlap"]
@@ -140,10 +149,10 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "myloasm", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "myloasm", "{sample}.log")
         shell:
             """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             (myloasm {input} \
             -o {output.dir} \
             --min-reads-contig 1 \
@@ -153,6 +162,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             (echo "Myloasm failed for sample {wildcards.sample}, creating empty output." >> {log} && \
              mkdir -p {output.dir} && \
              touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -161,7 +171,8 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "metamdbg")),
-            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "metamdbg", "contigs.fasta")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "metamdbg", "contigs.fasta"),
+            bench=os.path.join(BENCH_DIR, "secondary", "metamdbg", "{sample}.tsv")
         params:
             min_overlap=config["params"]["metamdbg_min_overlap"],
             min_id=config["params"]["metamdbg_min_seq_id"]
@@ -169,21 +180,22 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "metamdbg", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "metamdbg", "{sample}.log")
         shell:
             """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             (metaMDBG asm --in-ont {input} \
             --out-dir {output.dir} \
             --min-read-overlap {params.min_overlap} \
             --min-read-identity {params.min_id} \
             --threads {threads} 2> {log}
-
+            && \
             gzip --decompress -c {output.dir}/contigs.fasta.gz > {output.fasta}) \
             || \
             (echo "metaMDBG failed for sample {wildcards.sample}, creating empty output." >> {log} && \
              mkdir -p {output.dir} && \
              touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -192,7 +204,8 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "wtdbg2")),
-            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "wtdbg2", "contigs.fasta")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "wtdbg2", "contigs.fasta"),
+            bench=os.path.join(BENCH_DIR, "secondary", "wtdbg2", "{sample}.tsv")
         params:
             min_read_length=config["params"]["wtdbg2_min_read_len"],
             min_contig_length=config["params"]["wtdbg2_min_contig_len"]
@@ -200,12 +213,12 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "wtdbg2", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "wtdbg2", "{sample}.log")
         shell:
             """
             mkdir -p {output.dir}
 
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             (wtdbg2 \
             -i {input} \
             -o {output.dir}/dbg \
@@ -214,11 +227,12 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             -L {params.min_read_length} \
             -e 2 \
             --ctg-min-length {params.min_contig_length} 2> {log}
-            
+            && \
             wtpoa-cns -t {threads} -i {output.dir}/dbg.ctg.lay.gz -fo {output.fasta}) \
             || \
             (echo "Wtdbg2 failed for sample {wildcards.sample}, creating empty output." >> {log} && \
             touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -227,17 +241,18 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "shasta")),
-            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "shasta", "Assembly.fasta")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "shasta", "Assembly.fasta"),
+            bench=os.path.join(BENCH_DIR, "secondary", "shasta", "{sample}.tsv")
         params:
             min_read_length=config["params"]["shasta_min_read_len"]
         threads:
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "shasta", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "shasta", "{sample}.log")
         shell:
             """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             (shasta \
             --input {input} \
             --threads {threads} \
@@ -249,6 +264,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             || \
             (echo "Shasta failed for sample {wildcards.sample}, creating empty output." >> {log} && \
             touch {output.fasta})
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
@@ -257,23 +273,27 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "miniasm")),
-            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "miniasm", "final_assembly.fasta")
+            fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "miniasm", "final_assembly.fasta"),
+            bench=os.path.join(BENCH_DIR, "secondary", "miniasm", "{sample}.tsv")
         params:
             min_overlap=config["params"]["miniasm_min_overlap"]
         threads:
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "secondary", "miniasm", "{sample}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "secondary", "miniasm", "{sample}.log")
         shell:
             """
+            # I am missing my fail safe here...
+
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             # Create draft assembly graph
             minimap2 -t {threads} -x ava-ont {input} {input} > {output.dir}/overlaps.paf
             miniasm -s {params.min_overlap} -f {input} {output.dir}/overlaps.paf > {output.dir}/raw_assembly.gfa 2> {log}
 
             # Convert graph to fasta
             gfatools gfa2fa {output.dir}/raw_assembly.gfa > {output.fasta}
+            '
             """
 
 # Map original contigs to reassembled contigs
@@ -308,7 +328,8 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             read_ids=temp(os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "{sample}_unmapped_read_ids.txt")),
             unmapped=temp(os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "{sample}_unmapped_contigs.fasta")),
             rep_seq=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "cluster_rep_seq.fasta"),
-            cluster_tsv=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "cluster_cluster.tsv")
+            cluster_tsv=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "cluster_cluster.tsv"),
+            bench=os.path.join(BENCH_DIR, "final", "{assembler}", "{sample}.tsv")
         params:
             out_prefix=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "cluster"),
             tmp_dir=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "tmp")
@@ -316,10 +337,10 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "clusters", "{sample}_{assembler}.log")
-        benchmark:
-            os.path.join(BENCH_DIR, "final", "{assembler}", "{sample}.log")
         shell:
             """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
             # 1. Extract unmapped contigs
             # -f 4 gets unmapped reads
             samtools view -f 4 {input.bam} | cut -f1 | sort -u > {output.read_ids}
@@ -334,6 +355,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             # Command syntax: mmseqs easy-cluster <input> <output_prefix> <tmp_dir>
             mmseqs easy-cluster {output.unmapped} {params.out_prefix} {params.tmp_dir} \
             --min-seq-id 0.9 -c 0.8 --cov-mode 1 --remove-tmp-files 1 >> {log} 2>&1
+            '
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
