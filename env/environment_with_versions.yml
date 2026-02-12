@@ -7,21 +7,25 @@ channels:
 dependencies:
   - python==3.12.11
   - bioconda::diamond==2.1.13
+  - bioconda::flye==2.9.6
+  - bioconda::plass==5.cf8933
+  - bioconda::metamdbg==1.3
+  - bioconda::shasta==0.14.0
+  - bioconda::raven-assembler==1.8.3
+  - bioconda::miniasm==0.3
+  - bioconda::canu==2.3
+  - bioconda::myloasm==0.4.0
+  - bioconda::wtdbg==2.5
   - bioconda::fastplong==0.3.0
   - bioconda::minimap2==2.30
   - bioconda::samtools==1.22.1
-  - bioconda::flye==2.9.6
-  - bioconda::plass==5.cf8933
   - bioconda::seqkit==2.10.1
   - bioconda::quast==5.3.0
   - bioconda::bbmap==39.33
   - bioconda::checkv==1.0.1
-  - bioconda::raven-assembler==1.8.3
-  - bioconda::miniasm==0.3
   - bioconda::racon==1.5.0
   - bioconda::gfatools=0.5.5
   - bioconda::snakemake==9.10.1
-  - bioconda::canu==2.3
   - bioconda::mmseqs2==18.8cc5c
   - bioconda::cutadapt==5.1
   - conda-forge::rsync==3.4.1
@@ -29,3 +33,5 @@ dependencies:
   - conda-forge::quarto==1.7.33
   - conda-forge::r-quarto==1.5.1
   - conda-forge::r-knitr==1.50
+  - conda-forge::r-dplyr==1.1.4
+  - conda-forge::r-readr==2.1.5
