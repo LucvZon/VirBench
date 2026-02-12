@@ -17,7 +17,7 @@ dependencies:
   - bioconda::myloasm==0.4.0
   - bioconda::wtdbg==2.5
   - bioconda::fastplong==0.3.0
-  - bioconda::minimap2==2.30
+  - bioconda::minimap2==2.28
   - bioconda::samtools==1.22.1
   - bioconda::seqkit==2.10.1
   - bioconda::quast==5.3.0
