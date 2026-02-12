@@ -243,7 +243,7 @@ if ASSEMBLERS_CONFIG.get("shasta", False):
             --Reads.minReadLength {params.min_read_length} \
             --assemblyDirectory {output.dir} \
             --Align.minAlignedMarkerCount 30 \
-            --MarkerGraph.minCoverage 3 2> {log}) \
+            --MarkerGraph.minCoverage 3 >> {log}) \
             || \
             (echo "Shasta failed for sample {wildcards.sample}, creating empty output." >> {log} && \
             touch {output.fasta})
