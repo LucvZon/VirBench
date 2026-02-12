@@ -20,10 +20,10 @@ knitr::kable(version_data, format = "html")
 
 # Config file
 
-This was the configuration file (config/lovimab.yaml) used for this run.
+This was the configuration file (config/virbench.yaml) used for this run.
 
 ```{yaml}
-#| file: lovimab.yaml
+#| file: virbench.yaml
 #| code-fold: true
 #| code-summary: "Click to view the full config file"
 ```
