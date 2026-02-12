@@ -234,7 +234,8 @@ rule classify_reads_diamond:
     input:
         os.path.join(QC_DIR, "{sample}.qc.fastq")
     output:
-        os.path.join(READ_CLASSIFICATION_DIR, "{sample}.diamond_annotation.tsv")
+        tsv=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.diamond_annotation.tsv"),
+        bench=os.path.join(BENCH_DIR, "primary", "classify_reads_diamond", "{sample}.tsv")
     params:
         db=config["paths"]["diamond_db"],
         sensitivity_flag=f'--{config["params"]["diamond_sensitivity"]}'
@@ -242,11 +243,14 @@ rule classify_reads_diamond:
         config["params"]["threads"]
     log:
         os.path.join(LOG_DIR, "primary", "classify_reads_diamond", "{sample}.log")
-    benchmark:
-        os.path.join(BENCH_DIR, "primary", "classify_reads_diamond", "{sample}.log")
     shell:
-        "diamond blastx {params.sensitivity_flag} -d {params.db} -q {input} -o {output} "
-        "-f 6 qseqid -k 1 --threads {threads} &> {log}" # Using -k 1 for best hit
+        """
+        /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+        bash -c '
+        diamond blastx {params.sensitivity_flag} -d {params.db} -q {input} -o {output.tsv} \
+        -f 6 qseqid -k 1 --threads {threads} &> {log} # Using -k 1 for best hit
+        '
+        """
 
 # Step 5: Extract target reads based on DIAMOND classification
 rule extract_target_reads:
@@ -456,6 +460,16 @@ rule targeted_quast_comparison:
                     quast.py -t {threads} -o {output.out_dir} -r {params.reference} -l '{labels_str}' {fastas_str} &> {log}
                     """
                 )
+
+                # Check if QUAST skipped the misassemblies file (happens if no alignments found)
+                if not os.path.exists(output.misassemblies):
+                    # Log the event
+                    shell("echo 'QUAST finished but generated no alignment/misassembly report. Creating dummy.' >> {log}")
+                    # Ensure directory exists
+                    shell(f"mkdir -p {os.path.dirname(output.misassemblies)}")
+                    # Create empty file
+                    shell(f"touch {output.misassemblies}")
+
             except Exception as e:
                 # If QUAST fails (e.g. exit code 4 because NO "good" contigs were found),
                 # log it and create dummy files so the pipeline proceeds.
@@ -623,7 +637,7 @@ rule summarize_benchmarks_generic:
     input:
         # Use a lambda to dynamically pick the process list based on the wildcard
         benchmarks=lambda w: expand(
-            os.path.join(BENCH_DIR, "{assembly_type}", "{process}", "{sample}.log"),
+            os.path.join(BENCH_DIR, "{assembly_type}", "{process}", "{sample}.tsv"),
             assembly_type=w.assembly_type,
             sample=SAMPLES,
             # LOGIC: Add diamond only if type is 'primary', otherwise just use assemblers
