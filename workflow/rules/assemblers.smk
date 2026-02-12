@@ -172,7 +172,7 @@ if ASSEMBLERS_CONFIG.get("metamdbg", False):
             --min-read-overlap {params.min_overlap} \
             --min-read-identity {params.min_id} \
             --threads {threads} 2> {log}
-            && \
+
             gzip --decompress -c {output.dir}/contigs.fasta.gz > {output.fasta}) \
             || \
             (echo "metaMDBG failed for sample {wildcards.sample}, creating empty output." >> {log} && \
@@ -210,7 +210,7 @@ if ASSEMBLERS_CONFIG.get("wtdbg2", False):
             -L {params.min_read_length} \
             -e 2 \
             --ctg-min-length {params.min_contig_length} 2> {log}
-            && \
+
             wtpoa-cns -t {threads} -i {output.dir}/dbg.ctg.lay.gz -fo {output.fasta}) \
             || \
             (echo "Wtdbg2 failed for sample {wildcards.sample}, creating empty output." >> {log} && \
