@@ -6,21 +6,25 @@ channels:
 dependencies:
   - python
   - bioconda::diamond>=2.0.10 # Requires >=2.0.10 for '--fast' sensitivity
+  - bioconda::flye
+  - bioconda::plass
+  - bioconda::metamdbg
+  - bioconda::shasta
+  - bioconda::raven-assembler
+  - bioconda::miniasm
+  - bioconda::canu
+  - bioconda::myloasm
+  - bioconda::wtdbg
   - bioconda::fastplong
   - bioconda::minimap2
   - bioconda::samtools
-  - bioconda::flye
-  - bioconda::plass
   - bioconda::seqkit
   - bioconda::quast
   - bioconda::bbmap
   - bioconda::checkv
-  - bioconda::raven-assembler
-  - bioconda::miniasm
   - bioconda::racon
   - bioconda::gfatools
   - bioconda::snakemake
-  - bioconda::canu
   - bioconda::mmseqs2
   - bioconda::cutadapt
   - conda-forge::rsync
