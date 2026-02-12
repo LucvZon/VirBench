@@ -265,6 +265,6 @@ rule create_accuracy_overview:
                         "# Unaligned contigs": get_val(m_row, '# unaligned contigs'),
                         "# Misassemblies": m_row.get('# misassemblies') or mis_row.get('# misassemblies', '0'),
                         "# Indels": get_val(mis_row, '# indels'),
-                        "# Indels (> 5 bp)": get_val(mis_row, '# indels (> 5 bp)')
+                        "# Indels (> 5 bp)": get_val(mis_row, '    # indels (> 5 bp)')
                     }
                     writer.writerow(out_row)
