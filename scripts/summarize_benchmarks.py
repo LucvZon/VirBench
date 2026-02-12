@@ -7,20 +7,26 @@ import subprocess
 import argparse
 
 def process_benchmark_log(filepath_str):
-    """Parses a single Snakemake benchmark log file."""
+    """Parses a single benchmark log file (GNU Time format)."""
     filepath = Path(filepath_str)
-    COLUMNS_TO_PARSE = {'s': float, 'max_rss': float, 'mean_load': float}
+
+    COLUMNS_TO_PARSE = {'s': float, 'max_rss': float}
     try:
         df = pd.read_csv(
             filepath,
             sep='\t',
             header=0,
-            usecols=COLUMNS_TO_PARSE.keys(),
+            usecols=['s', 'max_rss', 'mean_load'],
             dtype=COLUMNS_TO_PARSE,
             comment='#'
         )
         if not df.empty:
             stats = df.iloc[0].to_dict()
+
+            raw_load = str(stats.get('mean_load', '0'))
+            clean_load = raw_load.replace('%', '')
+            stats['mean_load'] = float(clean_load)
+
             stats['process'] = filepath.parent.name
             stats['sample'] = filepath.stem # e.g., "Sample1" from "Sample1.log"
             return stats
@@ -47,7 +53,8 @@ def process_stats_file(filepath_str):
             '# Contigs': stats['n_contigs'],
             'Total Length (bp)': stats['contig_bp'],
             'Largest Contig (bp)': stats['ctg_max'],
-            'N50 (bp)': stats['ctg_L50']
+            'N50 (bp)': stats['ctg_L50'],
+            'L50 (bp)': stats['ctg_N50']
         }
     except Exception as e:
         print(f"Warning: Could not parse stats file {filepath}. Error: {e}", file=sys.stderr)
@@ -73,8 +80,10 @@ def process_bam_file(filepath_str, threads=1):
 def main(all_files, threads):
     benchmark_data, stats_data, bam_data = [], [], []
 
+    # Iterate inputs and route to correct processor
     for f in all_files:
-        if 'benchmarks' in f and f.endswith('.log'):
+        # Detect benchmark files by the directory structure or extension
+        if f.endswith('.tsv') and 'benchmarks' in f:
             res = process_benchmark_log(f)
             if res: benchmark_data.append(res)
         elif f.endswith('.stats.txt'):
@@ -86,14 +95,14 @@ def main(all_files, threads):
             
     # --- Convert to DataFrames ---
     benchmark_df = pd.DataFrame(benchmark_data) if benchmark_data else pd.DataFrame(columns=['sample', 'process', 's', 'max_rss', 'mean_load'])
-    stats_df = pd.DataFrame(stats_data) if stats_data else pd.DataFrame(columns=['sample', 'process', '# Contigs', 'Total Length (bp)', 'Largest Contig (bp)', 'N50 (bp)'])
+    stats_df = pd.DataFrame(stats_data) if stats_data else pd.DataFrame(columns=['sample', 'process', '# Contigs', 'Total Length (bp)', 'Largest Contig (bp)', 'N50 (bp)', 'L50 (bp)'])
     bam_df = pd.DataFrame(bam_data) if bam_data else pd.DataFrame(columns=['sample', 'process', 'total_reads', 'mapped_reads'])
 
     # --- Process Overall (Averaged) Summaries ---
     if not benchmark_df.empty:
         avg_benchmark_df = benchmark_df.groupby('process').mean(numeric_only=True).reset_index()
         avg_benchmark_df['Run Time (minutes)'] = (avg_benchmark_df['s'] / 60).round(2)
-        avg_benchmark_df['Peak Memory (GB)'] = (avg_benchmark_df['max_rss'] / 1024).round(2)
+        avg_benchmark_df['Peak Memory (GB)'] = (avg_benchmark_df['max_rss'] / 1024 / 1024).round(2)
         avg_benchmark_df['Mean CPU Cores'] = (avg_benchmark_df['mean_load'] / 100).round(2)
         benchmark_summary = avg_benchmark_df[['process', 'Run Time (minutes)', 'Peak Memory (GB)', 'Mean CPU Cores']]
     else:
@@ -109,7 +118,7 @@ def main(all_files, threads):
                 sum_bam_df['Reads Mapped (%)'] = ((sum_bam_df['mapped_reads'] / sum_bam_df['total_reads']) * 100).round(2)
                 assembly_summary_avg = pd.merge(assembly_summary_avg, sum_bam_df[['process', 'Reads Mapped (%)']], on='process', how='left')
     
-    final_cols = ['process', '# Contigs', 'Largest Contig (bp)', 'Total Length (bp)', 'N50 (bp)', 'Reads Mapped (%)']
+    final_cols = ['process', '# Contigs', 'Largest Contig (bp)', 'Total Length (bp)', 'N50 (bp)', 'L50 (bp)', 'Reads Mapped (%)']
     for col in final_cols:
         if col not in assembly_summary_avg.columns:
             assembly_summary_avg[col] = 0.0
@@ -127,7 +136,7 @@ def main(all_files, threads):
         # Generate benchmark summary for the sample
         if not sample_benchmark_df.empty:
             sample_benchmark_df['Run Time (minutes)'] = (sample_benchmark_df['s'] / 60).round(2)
-            sample_benchmark_df['Peak Memory (GB)'] = (sample_benchmark_df['max_rss'] / 1024).round(2)
+            sample_benchmark_df['Peak Memory (GB)'] = (sample_benchmark_df['max_rss'] / 1024 / 1024).round(2)
             sample_benchmark_df['Mean CPU Cores'] = (sample_benchmark_df['mean_load'] / 100).round(2)
             sample_benchmark_summary = sample_benchmark_df[['process', 'Run Time (minutes)', 'Peak Memory (GB)', 'Mean CPU Cores']]
             sample_benchmark_summary.to_csv(f"{sample}_benchmark_summary.csv", index=False)
