@@ -203,9 +203,18 @@ rule create_accuracy_overview:
 
         headers = [
             "Species", "Assembly type", "Assembler", "Sample",
-            "Genome fraction (%)", "NA50", "# Misassemblies",
-            "# Indels", "# Indels (> 5 bp)",
-            "Duplication ratio", "# Unaligned contigs"
+            # Basic Stats
+            "Genome fraction (%)", "Duplication ratio", 
+            "Total length", "Total aligned length", "Reference length",
+            "NA50", "NGA50", "LGA50", "auNGA", 
+            "# Unaligned contigs",
+            # Errors / Misassemblies
+            "# Misassemblies", "Misassembled contigs length",
+            "# c. relocations", "# c. inversions",
+            # Mismatches / Indels
+            "# mismatches", 
+            "# Indels", "Indels length", "# Indels (> 5 bp)", 
+            "# indels per 100 kbp"
         ]
 
         with open(output.tsv, 'w', newline='') as out_f:
@@ -259,12 +268,35 @@ rule create_accuracy_overview:
                         "Assembly type": a_type,
                         "Assembler": assembler,
                         "Sample": sample,
+                        
+                        # --- From transposed_report.tsv ---
                         "Genome fraction (%)": get_val(m_row, 'Genome fraction (%)'),
-                        "NA50": get_val(m_row, 'NA50'),
                         "Duplication ratio": get_val(m_row, 'Duplication ratio'),
                         "# Unaligned contigs": get_val(m_row, '# unaligned contigs'),
+                        "NA50": get_val(m_row, 'NA50'),
+                        
+                        # New Main Stats
+                        "Total length": get_val(m_row, 'Total length'),
+                        "Total aligned length": get_val(m_row, 'Total aligned length'),
+                        "Reference length": get_val(m_row, 'Reference length'),
+                        "# indels per 100 kbp": get_val(m_row, '# indels per 100 kbp'),
+                        "NGA50": get_val(m_row, 'NGA50'),
+                        "LGA50": get_val(m_row, 'LGA50'),
+                        "auNGA": get_val(m_row, 'auNGA'),
+
+                        # --- From transposed_report_misassemblies.tsv ---
+                        # Logic handles cases where # Misassemblies is in either file
                         "# Misassemblies": m_row.get('# misassemblies') or mis_row.get('# misassemblies', '0'),
                         "# Indels": get_val(mis_row, '# indels'),
-                        "# Indels (> 5 bp)": get_val(mis_row, '    # indels (> 5 bp)')
+                        
+                        # Note: Keeping the 4 spaces in the key lookup as requested
+                        "# Indels (> 5 bp)": get_val(mis_row, '    # indels (> 5 bp)'),
+
+                        # New Misassembly Stats
+                        "# c. relocations": get_val(mis_row, '    # c. relocations'),
+                        "# c. inversions": get_val(mis_row, '    # c. inversions'),
+                        "Misassembled contigs length": get_val(mis_row, 'Misassembled contigs length'),
+                        "# mismatches": get_val(mis_row, '# mismatches'),
+                        "Indels length": get_val(mis_row, 'Indels length')
                     }
                     writer.writerow(out_row)
