@@ -819,6 +819,111 @@ rule count_viral_genes:
         out_df = out_df[['assembler', 'viral_genes']]
         out_df.to_csv(output.csv, index=False)
 
+rule summarize_inspector:
+    input:
+        small_beds=lambda wildcards: [
+            os.path.join(STATS_DIR, "inspector", wildcards.assembly_type, f"{wildcards.sample}_{assembler}", "small_scale_error.bed")
+            for assembler in ACTIVE_ASSEMBLERS
+        ],
+        structural_beds=lambda wildcards: [
+            os.path.join(STATS_DIR, "inspector", wildcards.assembly_type, f"{wildcards.sample}_{assembler}", "structural_error.bed")
+            for assembler in ACTIVE_ASSEMBLERS
+        ]
+    output:
+        csv = os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_inspector_summary.csv")
+    params:
+        assemblers = ACTIVE_ASSEMBLERS
+    log:
+        os.path.join(LOG_DIR, "summarize_inspector", "{assembly_type}", "{sample}.log")
+    run:
+        import os
+        import csv
+
+        results = []
+        
+        for assembler, small_bed, struct_bed in zip(params.assemblers, input.small_beds, input.structural_beds):
+            counts = {
+                "assembler": assembler,
+                "Substitutions": 0,
+                "Collapses": 0,
+                "Collapses (<= 5 bp)": 0,
+                "Collapses (> 5 bp)": 0,
+                "Collapses (> 50 bp)": 0,
+                "Expansions": 0,
+                "Expansions (<= 5 bp)": 0,
+                "Expansions (> 5 bp)": 0,
+                "Expansions (> 50 bp)": 0,
+            }
+
+            # Parse small_scale_error.bed
+            if os.path.exists(small_bed) and os.path.getsize(small_bed) > 0:
+                with open(small_bed, 'r') as f:
+                    for line in f:
+                        if line.startswith('#') or not line.strip():
+                            continue
+                        cols = line.strip().split('\t')
+                        if len(cols) < 7:
+                            continue
+                        
+                        try:
+                            start = int(cols[1])
+                            end = int(cols[2])
+                            size = end - start
+                        except ValueError:
+                            continue
+
+                        etype = cols[6]
+
+                        if etype == 'BaseSubstitution':
+                            counts["Substitutions"] += 1
+                        elif etype == 'SmallCollapse':
+                            counts["Collapses"] += 1
+                            if size <= 5:
+                                counts["Collapses (<= 5 bp)"] += 1
+                            else:
+                                counts["Collapses (> 5 bp)"] += 1
+                        elif etype == 'SmallExpansion':
+                            counts["Expansions"] += 1
+                            if size <= 5:
+                                counts["Expansions (<= 5 bp)"] += 1
+                            else:
+                                counts["Expansions (> 5 bp)"] += 1
+
+            # Parse structural_error.bed
+            if os.path.exists(struct_bed) and os.path.getsize(struct_bed) > 0:
+                with open(struct_bed, 'r') as f:
+                    for line in f:
+                        if line.startswith('#') or not line.strip():
+                            continue
+                        cols = line.strip().split('\t')
+                        if len(cols) < 5:
+                            continue
+                        
+                        etype = cols[4]
+
+                        if 'Collapse' in etype:
+                            counts["Collapses"] += 1
+                            counts["Collapses (> 5 bp)"] += 1
+                            counts["Collapses (> 50 bp)"] += 1
+                        elif 'Expansion' in etype:
+                            counts["Expansions"] += 1
+                            counts["Expansions (> 5 bp)"] += 1
+                            counts["Expansions (> 50 bp)"] += 1
+
+            results.append(counts)
+
+        # Write results to CSV
+        with open(output.csv, 'w', newline='') as out_f:
+            fieldnames = [
+                "assembler", "Substitutions", "Collapses", "Collapses (<= 5 bp)", 
+                "Collapses (> 5 bp)", "Collapses (> 50 bp)", "Expansions", 
+                "Expansions (<= 5 bp)", "Expansions (> 5 bp)", "Expansions (> 50 bp)"
+            ]
+            writer = csv.DictWriter(out_f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in results:
+                writer.writerow(row)
+
 rule gather_versions:
      output:
         versions=os.path.join(RESULTS_DIR, "report", "versions.tsv")
