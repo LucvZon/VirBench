@@ -79,6 +79,10 @@ rule create_assembly_overview:
         viral_gene_counts = expand(
             os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_total_viral_genes.csv"),
             sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
+        ),
+        inspector_summaries = expand(
+            os.path.join(STATS_DIR, "per_sample", "{assembly_type}", "{sample}_inspector_summary.csv"),
+            sample=SAMPLES, assembly_type=ASSEMBLY_TYPES
         )
     output:
         tsv = os.path.join(STATS_DIR, "assembly_overview.tsv")
@@ -108,7 +112,9 @@ rule create_assembly_overview:
             "assembly_type", "assembler", "sample", 
             "# Contigs", "Total length (bp)", "N50 (bp)", "L50 (bp)", "Largest contig (bp)",
             "Elapsed time (h:m:s)", "Maximum memory (GB)", 
-            "Total viral genes", "Reads mapped (%)"
+            "Total viral genes", "Reads mapped (%)",
+            "Substitutions", "Collapses", "Collapses (<= 5 bp)", "Collapses (> 5 bp)", "Collapses (> 50 bp)",
+            "Expansions", "Expansions (<= 5 bp)", "Expansions (> 5 bp)", "Expansions (> 50 bp)"
         ]
 
         with open(output.tsv, 'w', newline='') as out_f:
@@ -125,6 +131,7 @@ rule create_assembly_overview:
                     f_assembly = os.path.join(base_dir, f"{sample}_assembly_summary.csv")
                     f_benchmark = os.path.join(base_dir, f"{sample}_benchmark_summary.csv")
                     f_genes = os.path.join(base_dir, f"{sample}_total_viral_genes.csv")
+                    f_inspector = os.path.join(base_dir, f"{sample}_inspector_summary.csv")
 
                     # 2. Load Viral Genes into a dict: {assembler: count}
                     genes_map = {}
@@ -151,7 +158,15 @@ rule create_assembly_overview:
                                     'mem': row.get('Peak Memory (GB)', '0')
                                 }
 
-                    # 4. Read Assembly Stats (Main Loop) and Merge
+                    # 4. Load Inspector Stats into a dict: {assembler: counts}
+                    insp_map = {}
+                    if os.path.exists(f_inspector):
+                        with open(f_inspector, 'r') as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                insp_map[row['assembler']] = row
+
+                    # 5. Read Assembly Stats (Main Loop) and Merge
                     if os.path.exists(f_assembly):
                         with open(f_assembly, 'r') as f:
                             reader = csv.DictReader(f)
@@ -165,6 +180,7 @@ rule create_assembly_overview:
                                 # Retrieve auxiliary data
                                 b_stats = bench_map.get(assembler, {'time': '0', 'mem': '0'})
                                 v_genes = genes_map.get(assembler, '0')
+                                i_stats = insp_map.get(assembler, {})
 
                                 # Prepare Output Row
                                 out_row = {
@@ -174,13 +190,21 @@ rule create_assembly_overview:
                                     "# Contigs": get_val(row, '# Contigs'),
                                     "Total length (bp)": get_val(row, 'Total Length (bp)'),
                                     "N50 (bp)": get_val(row, 'N50 (bp)'),
-                                    # Note: L50 wasn't in your provided example CSV, handling gracefully if missing
                                     "L50 (bp)": get_val(row, 'L50 (bp)', "N/A"), 
                                     "Largest contig (bp)": get_val(row, 'Largest Contig (bp)'),
                                     "Elapsed time (h:m:s)": min_to_hms(b_stats['time']),
                                     "Maximum memory (GB)": b_stats['mem'],
                                     "Total viral genes": v_genes,
-                                    "Reads mapped (%)": get_val(row, 'Reads Mapped (%)')
+                                    "Reads mapped (%)": get_val(row, 'Reads Mapped (%)'),
+                                    "Substitutions": get_val(i_stats, "Substitutions", "N/A"),
+                                    "Collapses": get_val(i_stats, "Collapses", "N/A"),
+                                    "Collapses (<= 5 bp)": get_val(i_stats, "Collapses (<= 5 bp)", "N/A"),
+                                    "Collapses (> 5 bp)": get_val(i_stats, "Collapses (> 5 bp)", "N/A"),
+                                    "Collapses (> 50 bp)": get_val(i_stats, "Collapses (> 50 bp)", "N/A"),
+                                    "Expansions": get_val(i_stats, "Expansions", "N/A"),
+                                    "Expansions (<= 5 bp)": get_val(i_stats, "Expansions (<= 5 bp)", "N/A"),
+                                    "Expansions (> 5 bp)": get_val(i_stats, "Expansions (> 5 bp)", "N/A"),
+                                    "Expansions (> 50 bp)": get_val(i_stats, "Expansions (> 50 bp)", "N/A")
                                 }
                                 
                                 writer.writerow(out_row)
