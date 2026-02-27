@@ -118,6 +118,7 @@ rule all:
         expand(os.path.join(STATS_DIR, "reads_to_contigs", "{assembly_type}", "{sample}_{assembler}.bam"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
         expand(os.path.join(STATS_DIR, "checkv", "{assembly_type}", "{sample}_{assembler}"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
         expand(os.path.join(ANNOTATION_DIR, "{assembly_type}", "{sample}", "post_processed", "{assembler}_annotated_contigs.tsv"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
+        expand(os.path.join(STATS_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}"), assembly_type=ASSEMBLY_TYPES, sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS),
 
         # --- Specific, Targeted Reports ---
         expand(os.path.join(STATS_DIR, "targeted_comparisons_status", "{sample}.done"), sample=SAMPLES),
@@ -590,6 +591,64 @@ rule run_checkv_generic:
             echo -e "contig_id\\tcontig_length\\ttotal_genes\\tviral_genes\\thost_genes\\tprovirus\\tproviral_length\\thost_length\\tregion_types\\tregion_lengths\\tregion_coords_bp\\tregion_coords_genes\\tregion_viral_genes\\tregion_host_genes" > {output.folder}/contamination.tsv
             
             echo -e "contig_id\\tcontig_length\\tkmer_freq\\tprediction_type\\tconfidence_level\\tconfidence_reason\\trepeat_length\\trepeat_count\\trepeat_n_freq\\trepeat_mode_base_freq\\trepeat_seq" > {output.folder}/complete_genomes.tsv
+        fi
+        """
+
+rule run_inspector:
+    input:
+        contigs=get_assembly_by_type,
+        reads=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+    output:
+        small=os.path.join(STATS_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}", "small_scale_error.bed"),
+        structural=os.path.join(STATS_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}", "structural_error.bed"),
+        out_dir=directory(os.path.join(STATS_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}"))
+    params:
+        script="scripts/inspector.py",
+        min_depth=config["params"]["inspector_min_depth"],
+        min_length=config["params"]["inspector_min_length"]
+    threads:
+        config["params"]["threads"]
+    log:
+        os.path.join(LOG_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}.log")
+    shell:
+        """
+        # Initialize a success flag
+        run_success=false
+
+        #SCRIPT_DIR=$(dirname "{params.script}")
+        #export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH
+
+        # Attempt to run Inspector if input is not empty
+        if [ -s {input.contigs} ]; then
+            echo "Input found. Starting Inspector..." > {log}
+
+            if python {params.script} \
+               -c {input.contigs} \
+               -r {input.reads} \
+               -o {output.out_dir} \
+               --datatype nanopore \
+               --min_contig_length {params.min_length} \
+               --min_contig_length_assemblyerror {params.min_length} \
+               --min_eval_depth {params.min_depth} \
+               --noplot \
+               -t {threads} >> {log} 2>&1; then
+
+                run_success=true
+                echo "Inspector completed succesfully" >> {log}
+            else
+                echo "Inspector crashed or failed. See above for details." >> {log}
+            fi
+        else
+            echo "Input assembly is empty." > {log}
+        fi
+        
+        # If the run was NOT successful, generate dummy files
+        if [ "$run_success"  = false ]; then
+            echo "Generating dummy output files for downstream compatibility." >> {log}
+
+            mkdir -p {output.out_dir}
+            touch {output.small}
+            touch {output.structural}
         fi
         """
 
