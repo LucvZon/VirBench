@@ -1,97 +1,20 @@
 #!/usr/bin/env python3
 
-import argparse, logging, tarfile, subprocess, os, sys
+import argparse, logging, os, sys, pickle
 from datetime import datetime
 from collections import Counter
 import pandas as pd
 from Bio import SeqIO
-import tempfile
 
 parser = argparse.ArgumentParser(description="Adds taxon lineage to DIAMOND BlastX output")
 
-parser.add_argument('-i',
-                    '--infile',
-                    help="Input tsv file",
-                    type=str,
-                    required = True)
-
-parser.add_argument('-c',
-                    '--contig_file',
-                    help="Input contig file",
-                    type=str,
-                    required = True)
-
-parser.add_argument('-o',
-                    '--outfile',
-                    help="Output tsv file",
-                    type=str,
-                    required = True)
-
-parser.add_argument('-u',
-                    '--unannotated',
-                    help="Output tsv file",
-                    type=str,
-                    required = True)
-
-parser.add_argument('-log',
-                    '--logfile',
-                    help="Name of logfile",
-                    default = datetime.now().strftime("logfile_%d-%m-%Y.log"),
-                    type=str,
-                    required = False)
-
-parser.add_argument('--quiet',
-                    action='store_true',
-                    default = False,
-                    required = False)
-
-def create_taxon_dict():
-    '''Download and create taxon dictionary'''
-    logging.info("Downloading new_taxdump..")
-  
-    fd, temp = tempfile.mkstemp()
-    os.close(fd) # Close the file descriptor immediately to avoid leaks
-
-    # Use wget with HTTPS instead of rsync
-    try:
-        subprocess.run(
-            ['wget', '-O', temp, 'https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.tar.gz'], 
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL, 
-            check=True
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Fallback to curl if wget is missing
-        logging.info("wget failed or missing, trying curl...")
-        subprocess.run(
-            ['curl', '-o', temp, 'https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.tar.gz'], 
-            check=True
-        )
-
-    logging.info("Creating taxon dictionary..")
-
-    taxon_dict = {}
-    
-    with tarfile.open(temp, "r:gz") as tar:
-        for line in tar.extractfile("rankedlineage.dmp"):
-            line = line.decode().strip().replace('\t','').split('|')
-            taxon_dict[line[0]] = line[1:-1]
-
-    #Add merged entries
-    with tarfile.open(temp, "r:gz") as tar:
-        for line in tar.extractfile("merged.dmp"):
-            line = line.decode().strip().replace('\t','').split('|')
-            taxon_dict[line[0]] = taxon_dict[line[1]]
-
-    #Add deleted entries
-    with tarfile.open(temp, "r:gz") as tar:
-        for line in tar.extractfile("delnodes.dmp"):
-            line = line.decode().strip().replace('\t','').split('|')
-            taxon_dict[line[0]] = taxon_dict['1']
-    
-    os.unlink(temp)
-    
-    return(taxon_dict)
+parser.add_argument('-i', '--infile', help="Input tsv file", type=str, required = True)
+parser.add_argument('-c', '--contig_file', help="Input contig file", type=str, required = True)
+parser.add_argument('-t', '--tax_dict', help="Input pickled taxonomy dictionary", type=str, required = True)
+parser.add_argument('-o', '--outfile', help="Output tsv file", type=str, required = True)
+parser.add_argument('-u', '--unannotated', help="Output tsv file", type=str, required = True)
+parser.add_argument('-log', '--logfile', help="Name of logfile", default = datetime.now().strftime("logfile_%d-%m-%Y.log"), type=str, required = False)
+parser.add_argument('--quiet', action='store_true', default = False, required = False)
 
 class contig_annotation:
 
@@ -230,7 +153,10 @@ if __name__ == "__main__":
 
     global taxon_dict
 
-    taxon_dict = create_taxon_dict()
+    # LOAD THE DICTIONARY FROM DISK INSTEAD OF DOWNLOADING
+    logging.info("Loading pre-built taxon dictionary..")
+    with open(args.tax_dict, 'rb') as f:
+        taxon_dict = pickle.load(f)
 
     logging.info("Creating contig set")
     contig_set = set()
