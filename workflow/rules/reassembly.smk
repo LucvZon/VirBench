@@ -283,16 +283,23 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             os.path.join(LOG_DIR, "secondary", "miniasm", "{sample}.log")
         shell:
             """
-            # I am missing my fail safe here...
-
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
             # Create draft assembly graph
             minimap2 -t {threads} -x ava-ont {input} {input} > {output.dir}/overlaps.paf
             miniasm -s {params.min_overlap} -f {input} {output.dir}/overlaps.paf > {output.dir}/raw_assembly.gfa 2> {log}
 
-            # Convert graph to fasta
-            gfatools gfa2fa {output.dir}/raw_assembly.gfa > {output.fasta}
+            # --- ROBUSTNESS CHECK ---
+            if [ -s {output.dir}/raw_assembly.gfa ]; then
+                # Convert graph to fasta
+                gfatools gfa2fa {output.dir}/raw_assembly.gfa > {output.fasta}
+            else
+                echo "Miniasm produced no contigs for sample {wildcards.sample}. Creating empty output." >> {log}
+                touch {output.fasta}
+            fi
+            
+            # --- CLEANUP MASSIVE INTERMEDIATE FILES ---
+            rm -f {output.dir}/*.paf {output.dir}/*.gfa
             '
             """
 
