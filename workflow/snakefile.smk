@@ -510,7 +510,7 @@ rule calculate_stats_generic:
 rule map_reads_generic:
     input:
         contigs=get_assembly_by_type,
-        reads=os.path.join(QC_DIR, "{sample}.qc.fastq")
+        reads=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
     output:
         os.path.join(STATS_DIR, "reads_to_contigs", "{assembly_type}", "{sample}_{assembler}.bam")
     threads:
