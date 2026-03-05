@@ -295,5 +295,8 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
                 echo "Miniasm produced no contigs for sample {wildcards.sample}. Skipping polishing." >> {log}
                 touch {output.fasta}
             fi
+
+            # --- CLEANUP MASSIVE INTERMEDIATE FILES ---
+            rm -f {output.dir}/*.paf {output.dir}/*.gfa {output.dir}/raw_assembly.fasta {output.dir}/polished_assembly_1.fasta
             '
             """
