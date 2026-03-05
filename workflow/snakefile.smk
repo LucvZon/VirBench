@@ -360,12 +360,21 @@ rule split_annotations_generic:
     shell:
         "grep -E '^{params.prefix}' {input} > {output} || touch {output}"
 
-# Step 8: Post-process the per-assembler annotation file
+rule build_taxdump_index:
+    output:
+        tax_dict=os.path.join(ANNOTATION_DIR, "taxonomy", "taxon_dict.pkl")
+    params:
+        script=workflow.source_path("../scripts/build_taxon_dict.py")
+    log:
+        os.path.join(LOG_DIR, "taxonomy", "build_taxdump.log")
+    shell:
+        "python {params.script} -o {output.tax_dict} -log {log}"
+
 rule post_process_annotation_generic:
     input:
         annotation=os.path.join(ANNOTATION_DIR, "{assembly_type}", "{sample}", "split", "{assembler}_annotation.tsv"),
-        # Note: We use the STAGING file here as the source of contig sequences
-        contigs=os.path.join(ANNOTATION_DIR, "staging", "{assembly_type}", "{sample}", "{assembler}.fasta")
+        contigs=os.path.join(ANNOTATION_DIR, "staging", "{assembly_type}", "{sample}", "{assembler}.fasta"),
+        tax_dict=os.path.join(ANNOTATION_DIR, "taxonomy", "taxon_dict.pkl") 
     output:
         annotated=os.path.join(ANNOTATION_DIR, "{assembly_type}", "{sample}", "post_processed", "{assembler}_annotated_contigs.tsv"),
         unannotated=os.path.join(ANNOTATION_DIR, "{assembly_type}", "{sample}", "post_processed", "{assembler}_unannotated_contigs.tsv")
@@ -375,6 +384,7 @@ rule post_process_annotation_generic:
         os.path.join(LOG_DIR, "post_process", "{assembly_type}", "{sample}_{assembler}.log")
     shell:
         "python {params.script} -i {input.annotation} -c {input.contigs} "
+        "-t {input.tax_dict} "
         "-o {output.annotated} -u {output.unannotated} -log {log}"
 
 # Step 9: Separate contigs based on annotation
