@@ -652,6 +652,8 @@ rule run_inspector:
         fi
         """
 
+
+
 # RULES FOR SUMMARY REPORT
 rule summarize_sample_checkv:
     input:
@@ -855,60 +857,84 @@ rule summarize_inspector:
                 "Expansions (> 50 bp)": 0,
             }
 
-            # Parse small_scale_error.bed
+            # -----------------------------------------
+            # 1. Parse small_scale_error.bed
+            # -----------------------------------------
             if os.path.exists(small_bed) and os.path.getsize(small_bed) > 0:
                 with open(small_bed, 'r') as f:
                     for line in f:
                         if line.startswith('#') or not line.strip():
                             continue
                         cols = line.strip().split('\t')
-                        if len(cols) < 7:
+                        
+                        # Type is at index 7 (the 8th column)
+                        if len(cols) < 8:
                             continue
                         
                         try:
                             start = int(cols[1])
                             end = int(cols[2])
-                            size = end - start
+                            size = abs(end - start)
                         except ValueError:
                             continue
 
-                        etype = cols[6]
+                        etype = cols[7]
 
                         if etype == 'BaseSubstitution':
                             counts["Substitutions"] += 1
                         elif etype == 'SmallCollapse':
                             counts["Collapses"] += 1
-                            if size <= 5:
-                                counts["Collapses (<= 5 bp)"] += 1
-                            else:
-                                counts["Collapses (> 5 bp)"] += 1
+                            if size <= 5: counts["Collapses (<= 5 bp)"] += 1
+                            if size > 5:  counts["Collapses (> 5 bp)"] += 1
+                            # Small scale file shouldn't theoretically exceed 50, but just in case:
+                            if size > 50: counts["Collapses (> 50 bp)"] += 1
                         elif etype == 'SmallExpansion':
                             counts["Expansions"] += 1
-                            if size <= 5:
-                                counts["Expansions (<= 5 bp)"] += 1
-                            else:
-                                counts["Expansions (> 5 bp)"] += 1
+                            if size <= 5: counts["Expansions (<= 5 bp)"] += 1
+                            if size > 5:  counts["Expansions (> 5 bp)"] += 1
+                            if size > 50: counts["Expansions (> 50 bp)"] += 1
 
-            # Parse structural_error.bed
+            # -----------------------------------------
+            # 2. Parse structural_error.bed
+            # -----------------------------------------
             if os.path.exists(struct_bed) and os.path.getsize(struct_bed) > 0:
                 with open(struct_bed, 'r') as f:
                     for line in f:
                         if line.startswith('#') or not line.strip():
                             continue
                         cols = line.strip().split('\t')
-                        if len(cols) < 5:
+                        
+                        # Type is at index 4 (the 5th column)
+                        if len(cols) < 6:
                             continue
                         
+                        try:
+                            start = int(cols[1])
+                            end = int(cols[2])
+                        except ValueError:
+                            continue
+
                         etype = cols[4]
+                        
+                        # Extract the explicit size (Format: "Size=3814" or "Size=123;456")
+                        size = abs(end - start)  # Default fallback
+                        if "Size=" in cols[5]:
+                            size_str = cols[5].replace("Size=", "").split(';')[0]
+                            try:
+                                size = int(size_str)
+                            except ValueError:
+                                pass
 
                         if 'Collapse' in etype:
                             counts["Collapses"] += 1
-                            counts["Collapses (> 5 bp)"] += 1
-                            counts["Collapses (> 50 bp)"] += 1
+                            if size <= 5: counts["Collapses (<= 5 bp)"] += 1
+                            if size > 5:  counts["Collapses (> 5 bp)"] += 1
+                            if size > 50: counts["Collapses (> 50 bp)"] += 1
                         elif 'Expansion' in etype:
                             counts["Expansions"] += 1
-                            counts["Expansions (> 5 bp)"] += 1
-                            counts["Expansions (> 50 bp)"] += 1
+                            if size <= 5: counts["Expansions (<= 5 bp)"] += 1
+                            if size > 5:  counts["Expansions (> 5 bp)"] += 1
+                            if size > 50: counts["Expansions (> 50 bp)"] += 1
 
             results.append(counts)
 
