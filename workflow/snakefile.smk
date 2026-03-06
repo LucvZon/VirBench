@@ -115,7 +115,6 @@ rule all:
     input:
         # --- Generic results ---
         expand(os.path.join(STATS_DIR, "contig_stats", "{assembly_type}", "{sample}_{assembler}.stats.txt"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
-        expand(os.path.join(STATS_DIR, "reads_to_contigs", "{assembly_type}", "{sample}_{assembler}.bam"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
         expand(os.path.join(STATS_DIR, "checkv", "{assembly_type}", "{sample}_{assembler}"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
         expand(os.path.join(ANNOTATION_DIR, "{assembly_type}", "{sample}", "post_processed", "{assembler}_annotated_contigs.tsv"), sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES),
         expand(os.path.join(STATS_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}"), assembly_type=ASSEMBLY_TYPES, sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS),
@@ -512,7 +511,7 @@ rule map_reads_generic:
         contigs=get_assembly_by_type,
         reads=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
     output:
-        os.path.join(STATS_DIR, "reads_to_contigs", "{assembly_type}", "{sample}_{assembler}.bam")
+        temp(os.path.join(STATS_DIR, "reads_to_contigs", "{assembly_type}", "{sample}_{assembler}.bam"))
     threads:
         config["params"]["threads"]
     log:
