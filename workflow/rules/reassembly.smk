@@ -312,7 +312,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             reassembled=get_reassembly_fasta,
             combined=os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
-            os.path.join(CLUSTER_DIR, "{sample}", "{assembler}" "combined_contigs_to_reassembly.bam")
+            os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "combined_contigs_to_reassembly.bam")
         threads:
             config["params"]["threads"]
         log:
@@ -329,7 +329,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
         message:
             "Extracting unmapped contigs and clustering them with MMseqs2"
         input:
-            bam=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}" "combined_contigs_to_reassembly.bam"),
+            bam=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "combined_contigs_to_reassembly.bam"),
             combined=os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             read_ids=temp(os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "{sample}_unmapped_read_ids.txt")),
