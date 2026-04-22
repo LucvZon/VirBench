@@ -127,7 +127,8 @@ rule all:
         # General overviews
         os.path.join(STATS_DIR, "sample_overview.tsv"),
         os.path.join(STATS_DIR, "assembly_overview.tsv"),
-        os.path.join(STATS_DIR, "accuracy_overview.tsv")
+        os.path.join(STATS_DIR, "accuracy_overview.tsv"),
+        os.path.join(STATS_DIR, "all_best_hits.tsv")
 
 
 # ===================================================================
@@ -661,7 +662,23 @@ rule run_inspector:
         fi
         """
 
-
+rule aggregate_best_hits:
+    input:
+        expand(
+            os.path.join(ANNOTATION_DIR, "{assembly_type}", "{sample}", "post_processed", "{assembler}_annotated_contigs.tsv"),
+            sample=SAMPLES, assembler=ACTIVE_ASSEMBLERS, assembly_type=ASSEMBLY_TYPES
+        )
+    output:
+        tsv=os.path.join(STATS_DIR, "all_best_hits.tsv")
+    params:
+        script=workflow.source_path("../scripts/aggregate_best_hits.py"),
+        threshold=90 
+    log:
+        os.path.join(LOG_DIR, "aggregate_best_hits.log")
+    shell:
+        """
+        python {params.script} -o {output.tsv} -t {params.threshold} {input} > {log} 2>&1
+        """
 
 # RULES FOR SUMMARY REPORT
 rule summarize_sample_checkv:
