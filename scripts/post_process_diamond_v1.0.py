@@ -15,6 +15,7 @@ parser.add_argument('-o', '--outfile', help="Output tsv file", type=str, require
 parser.add_argument('-u', '--unannotated', help="Output tsv file", type=str, required = True)
 parser.add_argument('-log', '--logfile', help="Name of logfile", default = datetime.now().strftime("logfile_%d-%m-%Y.log"), type=str, required = False)
 parser.add_argument('--quiet', action='store_true', default = False, required = False)
+parser.add_argument('--headers', action='store_true', default = False, help="Output headers in the output tsv files")
 
 class contig_annotation:
 
@@ -95,11 +96,17 @@ class contig_annotation:
             return(None)
         return('\t'.join(best_hit))
         
-def parse_diamond(infile, outfile, total):
+def parse_diamond(infile, outfile, total, write_headers):
     logging.info("Creating annotated file")
     annotated_set = set()
     progress = 1
     with open(infile,"r") as infile, open(outfile,"w") as outfile:
+
+        # Write header if flag is turned on
+        if write_headers:
+            headers = ['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen', 'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore', 'staxids', 'taxon_name', 'species', 'genus', 'family', 'order', 'class', 'phylum', 'kingdom', 'superkingdom']
+            print('\t'.join(headers), file=outfile)
+
         contig = contig_annotation(None)
         for line in infile:
             line = line.strip()
@@ -165,11 +172,13 @@ if __name__ == "__main__":
 
     total = len(contig_set)
 
-    annotated_set = parse_diamond(args.infile, args.outfile, total)
+    annotated_set = parse_diamond(args.infile, args.outfile, total, args.headers)
     
     logging.info("Creating unannotated file")
     unannotated = contig_set.difference(annotated_set)
 
     with open(args.unannotated, "w") as f:
+        if args.headers:
+            print("qseqid", file=f)
         for contig in unannotated:
             print(contig, file = f)
