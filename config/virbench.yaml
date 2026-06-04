@@ -45,7 +45,9 @@ params:
   # Minimum contig length
   penguin_min_contig_len: 1000
   # Minimum sequence identity for overlaps
-  penguin_min_seq_id: 0.95
+  penguin_min_seq_id: 0.99
+  # Minimum alignment length for overlaps
+  penguin_min_overlap: 250
   
   # --- CANU ---
   # Set genome size for canu
