@@ -229,9 +229,17 @@ rule quality_control:
     log:
         os.path.join(LOG_DIR, "quality_control", "{sample}.log")
     shell:
-        "fastplong -i {input} -o {output.fastq} "
-        "--length_required 150 --qualified_quality_phred 10 -j {output.json} -h {output.html} "
-        "--unqualified_percent_limit 50 --disable_adapter_trimming --thread {threads} &> {log}"
+        """
+        fastplong -i {input} -o {output.fastq} \
+        --low_complexity_filter \
+        --complexity_threshold 60 \
+        --length_required 150 \
+        --qualified_quality_phred 10 \
+        --unqualified_percent_limit 35 \
+        --disable_adapter_trimming \
+        -j {output.json} -h {output.html} \
+        --thread {threads} &> {log}
+        """
 
 # Step 4: Classify reads with DIAMOND against a custom database
 rule classify_reads_diamond:
