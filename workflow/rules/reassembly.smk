@@ -68,7 +68,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
             (penguin nuclassemble {input} {output.fasta} {output.tmp_dir} \
-            --min-contig-len {params.min_len} --min-seq-id {params.min_id} \
+            --min-contig-len {params.min_len} --min-seq-id 0.95 \
             --threads {threads} &> {log}) \
             || \
             (echo "PenguiN failed for sample {wildcards.sample}, creating empty output." >> {log} && \
