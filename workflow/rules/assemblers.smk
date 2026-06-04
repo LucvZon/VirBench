@@ -42,7 +42,8 @@ if ASSEMBLERS_CONFIG.get("penguin", False):
             bench=os.path.join(BENCH_DIR, "primary", "penguin", "{sample}.tsv")
         params:
             min_len=config["params"]["penguin_min_contig_len"],
-            min_id=config["params"]["penguin_min_seq_id"]
+            min_id=config["params"]["penguin_min_seq_id"],
+            min_overlap=config["params"]["penguin_min_overlap"]
         threads:
             config["params"]["threads"]		
         log:
@@ -51,8 +52,8 @@ if ASSEMBLERS_CONFIG.get("penguin", False):
             """
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
-            (penguin nuclassemble {input} {output.fasta} {output.tmp_dir} \
-            --min-contig-len {params.min_len} --min-seq-id {params.min_id} \
+            (penguin guided_nuclassemble {input} {output.fasta} {output.tmp_dir} \
+            --min-contig-len {params.min_len} --min-seq-id {params.min_id} --min-aln-len {params.min_overlap} \
             --threads {threads} &> {log}) \
             || \
             (echo "PenguiN failed for sample {wildcards.sample}, creating empty output." >> {log} && \
