@@ -269,9 +269,8 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
             # Create draft assembly graph
-            minimap2 -t {threads} -x ava-ont {input} {input} > {output.dir}/overlaps.paf
-            # Redirect miniasm stdout and stderr to log
-            miniasm -s {params.min_overlap} -f {input} {output.dir}/overlaps.paf > {output.dir}/raw_assembly.gfa 2> {log}
+            minimap2 -t {threads} -K 1m -x ava-ont {input} {input} \
+            | miniasm -s {params.min_overlap} -f {input} - > {output.dir}/raw_assembly.gfa 2> {log}
 
             # Convert graph to fasta
             gfatools gfa2fa {output.dir}/raw_assembly.gfa > {output.dir}/raw_assembly.fasta
@@ -283,12 +282,14 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
                 echo "Miniasm produced contigs. Proceeding with Racon polishing." >> {log}
 
                 # First polishing round
-                minimap2 -t {threads} -x map-ont {output.dir}/raw_assembly.fasta {input} > {output.dir}/polished_overlaps_1.paf 2>> {log}
-                racon -t {threads} {input} {output.dir}/polished_overlaps_1.paf {output.dir}/raw_assembly.fasta > {output.dir}/polished_assembly_1.fasta 2>> {log}
+                minimap2 -t {threads} -x map-ont {output.dir}/raw_assembly.fasta {input} \
+                | gzip --fast > {output.dir}/polished_overlaps_1.paf.gz 2>> {log}
+                racon -t {threads} {input} {output.dir}/polished_overlaps_1.paf.gz {output.dir}/raw_assembly.fasta > {output.dir}/polished_assembly_1.fasta 2>> {log}
                 
                 # Second polishing round
-                minimap2 -t {threads} -x map-ont {output.dir}/polished_assembly_1.fasta {input} > {output.dir}/polished_overlaps_2.paf 2>> {log}
-                racon -t {threads} {input} {output.dir}/polished_overlaps_2.paf {output.dir}/polished_assembly_1.fasta > {output.fasta} 2>> {log}
+                minimap2 -t {threads} -x map-ont {output.dir}/polished_assembly_1.fasta {input} \
+                | gzip --fast > {output.dir}/polished_overlaps_2.paf.gz 2>> {log}
+                racon -t {threads} {input} {output.dir}/polished_overlaps_2.paf.gz {output.dir}/polished_assembly_1.fasta > {output.fasta} 2>> {log}
 
             else
                 # If the file IS empty, skip polishing and create an empty final file
@@ -297,6 +298,6 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
             fi
 
             # --- CLEANUP MASSIVE INTERMEDIATE FILES ---
-            rm -f {output.dir}/*.paf {output.dir}/*.gfa {output.dir}/raw_assembly.fasta {output.dir}/polished_assembly_1.fasta
+            rm -f {output.dir}/*.paf.gz {output.dir}/*.gfa {output.dir}/raw_assembly.fasta {output.dir}/polished_assembly_1.fasta
             '
             """
