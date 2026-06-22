@@ -24,7 +24,7 @@ if ASSEMBLERS_CONFIG.get("metaflye", False):
 
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
-            (flye --nano-raw {input} --meta --min-overlap 1000 -o {output.dir} --threads {threads} &> {log}) \
+            (flye --nano-hq {input} --meta --min-overlap 1000 -o {output.dir} --deterministic --threads {threads} &> {log}) \
             || \
             (echo "Flye failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
              mkdir -p {output.dir} && \
@@ -54,7 +54,7 @@ if ASSEMBLERS_CONFIG.get("penguin", False):
             bash -c '
             (penguin guided_nuclassemble {input} {output.fasta} {output.tmp_dir} \
             --min-contig-len {params.min_len} --min-seq-id {params.min_id} --min-aln-len {params.min_overlap} \
-            --threads {threads} &> {log}) \
+            --clust-min-seq-id 0.95 --clust-min-cov 0.85 --threads {threads} &> {log}) \
             || \
             (echo "PenguiN failed for sample {wildcards.sample}, creating empty output." >> {log} && \
              touch {output.fasta})
@@ -76,7 +76,7 @@ if ASSEMBLERS_CONFIG.get("raven", False):
             """
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
-            (raven --threads {threads} -p 2 {input} > {output.fasta} 2> {log}
+            (raven --threads {threads} -u 1000 --identity 0.95 -p 2 {input} > {output.fasta} 2> {log}
             rm raven.cereal) \
             || \
             (echo "Raven failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
@@ -109,6 +109,9 @@ if ASSEMBLERS_CONFIG.get("canu", False):
                 genomeSize={params.genome_size} \
                 maxThreads={threads} \
                 maxMemory={params.memory} \
+                minReadLength=400 \
+                minOverlapLength=250 \
+                contigFilter="2 1000 1.0 0.5 5" \
                 -nanopore {input} \
                 useGrid=false 2> {log}) \
             || \
@@ -139,7 +142,8 @@ if ASSEMBLERS_CONFIG.get("myloasm", False):
             bash -c '
             (myloasm {input} \
                 -o {output.dir} \
-                --min-reads-contig {params.min_reads} \
+                --quality-value-cutoff 95 \
+                --absolute-coverage-threshold {params.min_reads} \
                 --min-ol {params.min_overlap} \
                 -t {threads} 2> {log}) \
             || \
@@ -172,6 +176,8 @@ if ASSEMBLERS_CONFIG.get("metamdbg", False):
             --out-dir {output.dir} \
             --min-read-overlap {params.min_overlap} \
             --min-read-identity {params.min_id} \
+            --density-correction 0.1 \
+            --density-assembly 0.05 \
             --threads {threads} 2> {log}
 
             gzip --decompress -c {output.dir}/contigs.fasta.gz > {output.fasta}) \
@@ -207,9 +213,11 @@ if ASSEMBLERS_CONFIG.get("wtdbg2", False):
             -i {input} \
             -o {output.dir}/dbg \
             -t {threads} \
-            -x ont \
+            -x preset4 \
             -L {params.min_read_length} \
-            -e 2 \
+            -l 250 \
+            -e 5 \
+            --node-len 512 \
             --ctg-min-length {params.min_contig_length} 2> {log}
 
             wtpoa-cns -t {threads} -i {output.dir}/dbg.ctg.lay.gz -fo {output.fasta}) \
@@ -243,8 +251,13 @@ if ASSEMBLERS_CONFIG.get("shasta", False):
             --config Nanopore-R10-Fast-Nov2022 \
             --Reads.minReadLength {params.min_read_length} \
             --assemblyDirectory {output.dir} \
-            --Align.minAlignedMarkerCount 30 \
-            --MarkerGraph.minCoverage 3 >> {log}) \
+            --Align.minAlignedMarkerCount 25 \
+            --Align.minAlignedFraction 0.80 \
+            --MarkerGraph.minCoverage 5 \
+            --MarkerGraph.minEdgeCoverage 5 \
+            --Kmers.probability 0.25 \
+            --Align.maxSkip 10 \
+            --Align.maxDrift 10 >> {log}) \
             || \
             (echo "Shasta failed for sample {wildcards.sample}, creating empty output." >> {log} && \
             touch {output.fasta})
@@ -271,7 +284,7 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
             bash -c '
             # Create draft assembly graph
             minimap2 -t {threads} -K 1m -x ava-ont {input} {input} \
-            | miniasm -s {params.min_overlap} -f {input} - > {output.dir}/raw_assembly.gfa 2> {log}
+            | miniasm -s {params.min_overlap} -c 5 -i 0.95 -f {input} - > {output.dir}/raw_assembly.gfa 2> {log}
 
             # Convert graph to fasta
             gfatools gfa2fa {output.dir}/raw_assembly.gfa > {output.dir}/raw_assembly.fasta
@@ -300,5 +313,40 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
 
             # --- CLEANUP MASSIVE INTERMEDIATE FILES ---
             rm -f {output.dir}/*.paf.gz {output.dir}/*.gfa {output.dir}/raw_assembly.fasta {output.dir}/polished_assembly_1.fasta
+            '
+            """
+
+if ASSEMBLERS_CONFIG.get("hifiasm", False):
+    rule assemble_hifiasm:
+        input:
+            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+        output:
+            dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "hifiasm")),
+            fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "hifiasm", "assembly.fasta"),
+            bench=os.path.join(BENCH_DIR, "primary", "hifiasm", "{sample}.tsv")
+        threads:
+            config["params"]["threads"]
+        log:
+            os.path.join(LOG_DIR, "primary", "hifiasm", "{sample}.log")
+        shell:
+            """
+            /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
+            bash -c '
+            (hifiasm -o {output.dir}/asm \
+            {input} \
+            --ont \
+            --rl-cut 400 \
+            --chem-c 1 \
+            --chem-f 100 \
+            -r 3 \
+            -a 4 \
+            -D 200 \
+            --ctg-n 5 \
+            -t {threads}) \
+
+            gfatools gfa2fa {output.dir}/asm.bp.p_ctg.gfa > {output.fasta}
+            || \
+            (echo "Hifiasm failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
+             touch {output.fasta})
             '
             """
