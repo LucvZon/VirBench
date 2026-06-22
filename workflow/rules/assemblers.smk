@@ -8,7 +8,7 @@
 if ASSEMBLERS_CONFIG.get("metaflye", False):
     rule assemble_metaflye:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "metaflye")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "metaflye", "assembly.fasta"),
@@ -37,7 +37,7 @@ if ASSEMBLERS_CONFIG.get("metaflye", False):
 if ASSEMBLERS_CONFIG.get("penguin", False):
     rule assemble_penguin:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "penguin", "contigs.fasta"),
             tmp_dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "penguin", "temp_files")),
@@ -68,7 +68,7 @@ if ASSEMBLERS_CONFIG.get("penguin", False):
 if ASSEMBLERS_CONFIG.get("raven", False):
     rule assemble_raven:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "raven", "assembly.fasta"),
             bench=os.path.join(BENCH_DIR, "primary", "raven", "{sample}.tsv")
@@ -94,7 +94,7 @@ if ASSEMBLERS_CONFIG.get("raven", False):
 if ASSEMBLERS_CONFIG.get("canu", False):
     rule assemble_canu:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "canu")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "canu", "canu_assembly.contigs.fasta"),
@@ -135,7 +135,7 @@ if ASSEMBLERS_CONFIG.get("canu", False):
 if ASSEMBLERS_CONFIG.get("myloasm", False):
     rule assemble_myloasm:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "myloasm")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "myloasm", "assembly_primary.fa"),
@@ -168,7 +168,7 @@ if ASSEMBLERS_CONFIG.get("myloasm", False):
 if ASSEMBLERS_CONFIG.get("metamdbg", False):
     rule assemble_metamdbg:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "metamdbg")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "metamdbg", "contigs.fasta"),
@@ -203,7 +203,7 @@ if ASSEMBLERS_CONFIG.get("metamdbg", False):
 if ASSEMBLERS_CONFIG.get("wtdbg2", False):
     rule assemble_wtdbg2:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "wtdbg2")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "wtdbg2", "contigs.fasta"),
@@ -245,7 +245,7 @@ if ASSEMBLERS_CONFIG.get("wtdbg2", False):
 if ASSEMBLERS_CONFIG.get("shasta", False):
     rule assemble_shasta:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "shasta")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "shasta", "Assembly.fasta"),
@@ -283,7 +283,7 @@ if ASSEMBLERS_CONFIG.get("shasta", False):
 if ASSEMBLERS_CONFIG.get("miniasm", False):
     rule assemble_miniasm:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "miniasm")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "miniasm", "final_assembly.fasta"),
@@ -337,7 +337,7 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
 if ASSEMBLERS_CONFIG.get("hifiasm", False):
     rule assemble_hifiasm:
         input:
-            os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+            os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
         output:
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "hifiasm")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "hifiasm", "assembly.fasta"),
