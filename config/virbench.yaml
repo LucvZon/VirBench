@@ -42,20 +42,32 @@ reassembly:
 params:
   threads: 24
 
+  # --- METAFLYE ---
+  metaflye_min_overlap: 1000
+
   # --- PENGUIN ---
   # Minimum contig length
   penguin_min_contig_len: 1000
   # Minimum sequence identity for overlaps
-  penguin_min_seq_id: 0.99
+  penguin_min_seq_id: 0.95
   # Minimum alignment length for overlaps
   penguin_min_overlap: 250
+  # Minimum sequence identity for clustering
+  penguin_min_clust_seq_id: 0.95
+  # Coverage threshold for clustering
+  penguin_min_clust_cov: 0.85 
   
   # --- CANU ---
   # Set genome size for canu
+  canu_min_read_len: 400
+  canu_min_overlap: 250
+  canu_min_contig_len: 1000
+  canu_min_cov: 5
   canu_genome_size: 200k
 
   # --- MYLOASM ---
-  myloasm_min_reads: 10
+  myloasm_min_seq_id: 0.95
+  myloasm_min_cov: 5
   myloasm_min_overlap: 250
 
   # --- METAMDBG ---
@@ -65,12 +77,26 @@ params:
   # --- WTDBG2 ---
   wtdbg2_min_read_len: 400
   wtdbg2_min_contig_len: 1000
+  wtdbg2_min_overlap: 250
+  wtdbg2_min_cov: 5
+  wtdbg2_min_node_len: 512
 
   # --- SHASTA ---
   shasta_min_read_len: 400
+  shasta_min_cov: 5
 
   # --- MINIASM ---
   miniasm_min_overlap: 250
+  miniasm_min_cov: 5
+  miniasm_min_seq_id: 0.95
+
+  # --- RAVEN ---
+  raven_min_contig_len: 1000
+  raven_min_seq_id: 0.95
+
+  # --- HIFIASM ---
+  hifiasm_min_read_len: 400
+  hifiasm_tip_contig_filter: 5
 
   # --- INSPECTOR ---
   inspector_min_depth: 30
