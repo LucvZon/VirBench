@@ -13,6 +13,8 @@ if ASSEMBLERS_CONFIG.get("metaflye", False):
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "metaflye")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "metaflye", "assembly.fasta"),
             bench=os.path.join(BENCH_DIR, "primary", "metaflye", "{sample}.tsv")
+        params:
+            min_overlap=config["params"]["metaflye_min_overlap"]
         threads:
             config["params"]["threads"]
         log:
@@ -24,7 +26,7 @@ if ASSEMBLERS_CONFIG.get("metaflye", False):
 
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
-            (flye --nano-hq {input} --meta --min-overlap 1000 -o {output.dir} --deterministic --threads {threads} &> {log}) \
+            (flye --nano-hq {input} --meta --min-overlap {params.min_overlap} -o {output.dir} --deterministic --threads {threads} &> {log}) \
             || \
             (echo "Flye failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
              mkdir -p {output.dir} && \
@@ -43,7 +45,9 @@ if ASSEMBLERS_CONFIG.get("penguin", False):
         params:
             min_len=config["params"]["penguin_min_contig_len"],
             min_id=config["params"]["penguin_min_seq_id"],
-            min_overlap=config["params"]["penguin_min_overlap"]
+            min_overlap=config["params"]["penguin_min_overlap"],
+            min_clust_id=config["params"]["penguin_min_clust_seq_id"],
+            min_clust_cov=config["params"]["penguin_min_clust_cov"]
         threads:
             config["params"]["threads"]		
         log:
@@ -54,7 +58,7 @@ if ASSEMBLERS_CONFIG.get("penguin", False):
             bash -c '
             (penguin guided_nuclassemble {input} {output.fasta} {output.tmp_dir} \
             --min-contig-len {params.min_len} --min-seq-id {params.min_id} --min-aln-len {params.min_overlap} \
-            --clust-min-seq-id 0.95 --clust-min-cov 0.85 --threads {threads} &> {log}) \
+            --clust-min-seq-id {params.min_clust_id} --clust-min-cov {params.min_clust_cov} --threads {threads} &> {log}) \
             || \
             (echo "PenguiN failed for sample {wildcards.sample}, creating empty output." >> {log} && \
              touch {output.fasta})
@@ -68,6 +72,9 @@ if ASSEMBLERS_CONFIG.get("raven", False):
         output:
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "raven", "assembly.fasta"),
             bench=os.path.join(BENCH_DIR, "primary", "raven", "{sample}.tsv")
+        params:
+            min_contig_length=config["params"]["raven_min_contig_len"],
+            min_seq_id=config["params"]["raven_min_seq_id"]
         threads:
             config["params"]["threads"]
         log:
@@ -76,7 +83,7 @@ if ASSEMBLERS_CONFIG.get("raven", False):
             """
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
             bash -c '
-            (raven --threads {threads} -u 1000 --identity 0.95 -p 2 {input} > {output.fasta} 2> {log}
+            (raven --threads {threads} -u {params.min_contig_length} --identity {params.min_seq_id} -p 2 {input} > {output.fasta} 2> {log}
             rm raven.cereal) \
             || \
             (echo "Raven failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
@@ -94,7 +101,11 @@ if ASSEMBLERS_CONFIG.get("canu", False):
             bench=os.path.join(BENCH_DIR, "primary", "canu", "{sample}.tsv")
         params:
             genome_size=config["params"]["canu_genome_size"],
-            # A good rule of thumb: 4GB of memory per thread for Canu
+            min_read_length=config["params"]["canu_min_read_len"],
+            min_overlap=config["params"]["canu_min_overlap"],
+            min_contig_length=config["params"]["canu_min_contig_len"],
+            min_coverage=config["params"]["canu_min_cov"],
+            # A rule of thumb: 4GB of memory per thread for Canu
             memory=lambda wildcards, threads: threads * 4
         threads:
             config["params"]["threads"]
@@ -109,9 +120,9 @@ if ASSEMBLERS_CONFIG.get("canu", False):
                 genomeSize={params.genome_size} \
                 maxThreads={threads} \
                 maxMemory={params.memory} \
-                minReadLength=400 \
-                minOverlapLength=250 \
-                contigFilter="2 1000 1.0 0.5 5" \
+                minReadLength={params.min_read_length} \
+                minOverlapLength={params.min_overlap} \
+                contigFilter="2 {params.min_contig_length} 1.0 0.5 {params.min_coverage}" \
                 -nanopore {input} \
                 useGrid=false 2> {log}) \
             || \
@@ -130,8 +141,9 @@ if ASSEMBLERS_CONFIG.get("myloasm", False):
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "myloasm", "assembly_primary.fa"),
             bench=os.path.join(BENCH_DIR, "primary", "myloasm", "{sample}.tsv")
         params:
-            min_reads=config["params"]["myloasm_min_reads"],
-            min_overlap=config["params"]["myloasm_min_overlap"]
+            min_coverage=config["params"]["myloasm_min_cov"],
+            min_overlap=config["params"]["myloasm_min_overlap"],
+            min_seq_id=config["params"]["myloasm_min_seq_id"]
         threads:
             config["params"]["threads"]
         log:
@@ -142,8 +154,8 @@ if ASSEMBLERS_CONFIG.get("myloasm", False):
             bash -c '
             (myloasm {input} \
                 -o {output.dir} \
-                --quality-value-cutoff 95 \
-                --absolute-coverage-threshold {params.min_reads} \
+                --quality-value-cutoff {params.min_seq_id} \
+                --absolute-coverage-threshold {params.min_coverage} \
                 --min-ol {params.min_overlap} \
                 -t {threads} 2> {log}) \
             || \
@@ -198,7 +210,10 @@ if ASSEMBLERS_CONFIG.get("wtdbg2", False):
             bench=os.path.join(BENCH_DIR, "primary", "wtdbg2", "{sample}.tsv")
         params:
             min_read_length=config["params"]["wtdbg2_min_read_len"],
-            min_contig_length=config["params"]["wtdbg2_min_contig_len"]
+            min_contig_length=config["params"]["wtdbg2_min_contig_len"],
+            min_overlap=config["params"]["wtdbg2_min_overlap"],
+            min_coverage=config["params"]["wtdbg2_min_cov"],
+            min_node_length=config["params"]["wtdbg2_min_node_len"]
         threads:
             config["params"]["threads"]
         log:
@@ -215,9 +230,9 @@ if ASSEMBLERS_CONFIG.get("wtdbg2", False):
             -t {threads} \
             -x preset4 \
             -L {params.min_read_length} \
-            -l 250 \
-            -e 5 \
-            --node-len 512 \
+            -l {params.min_overlap} \
+            -e {params.min_coverage} \
+            --node-len {params.min_node_len} \
             --ctg-min-length {params.min_contig_length} 2> {log}
 
             wtpoa-cns -t {threads} -i {output.dir}/dbg.ctg.lay.gz -fo {output.fasta}) \
@@ -236,7 +251,8 @@ if ASSEMBLERS_CONFIG.get("shasta", False):
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "shasta", "Assembly.fasta"),
             bench=os.path.join(BENCH_DIR, "primary", "shasta", "{sample}.tsv")
         params:
-            min_read_length=config["params"]["shasta_min_read_len"]
+            min_read_length=config["params"]["shasta_min_read_len"],
+            min_coverage=config["params"]["shasta_min_cov"]
         threads:
             config["params"]["threads"]
         log:
@@ -253,8 +269,8 @@ if ASSEMBLERS_CONFIG.get("shasta", False):
             --assemblyDirectory {output.dir} \
             --Align.minAlignedMarkerCount 25 \
             --Align.minAlignedFraction 0.80 \
-            --MarkerGraph.minCoverage 5 \
-            --MarkerGraph.minEdgeCoverage 5 \
+            --MarkerGraph.minCoverage {params.min_coverage} \
+            --MarkerGraph.minEdgeCoverage {params.min_coverage} \
             --Kmers.probability 0.25 \
             --Align.maxSkip 10 \
             --Align.maxDrift 10 >> {log}) \
@@ -273,7 +289,9 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "miniasm", "final_assembly.fasta"),
             bench=os.path.join(BENCH_DIR, "primary", "miniasm", "{sample}.tsv")
         params:
-            min_overlap=config["params"]["miniasm_min_overlap"]
+            min_overlap=config["params"]["miniasm_min_overlap"],
+            min_coverage=config["params"]["miniasm_min_cov"],
+            min_seq_id=config["params"]["miniasm_min_seq_id"]
         threads:
             config["params"]["threads"]
         log:
@@ -284,7 +302,7 @@ if ASSEMBLERS_CONFIG.get("miniasm", False):
             bash -c '
             # Create draft assembly graph
             minimap2 -t {threads} -K 1m -x ava-ont {input} {input} \
-            | miniasm -s {params.min_overlap} -c 5 -i 0.95 -f {input} - > {output.dir}/raw_assembly.gfa 2> {log}
+            | miniasm -s {params.min_overlap} -c {params.min_coverage} -i {params.min_seq_id} -f {input} - > {output.dir}/raw_assembly.gfa 2> {log}
 
             # Convert graph to fasta
             gfatools gfa2fa {output.dir}/raw_assembly.gfa > {output.dir}/raw_assembly.fasta
@@ -324,6 +342,9 @@ if ASSEMBLERS_CONFIG.get("hifiasm", False):
             dir=directory(os.path.join(ASSEMBLY_DIR, "{sample}", "hifiasm")),
             fasta=os.path.join(ASSEMBLY_DIR, "{sample}", "hifiasm", "assembly.fasta"),
             bench=os.path.join(BENCH_DIR, "primary", "hifiasm", "{sample}.tsv")
+        params:
+            min_read_length=config["params"]["hifiasm_min_read_len"],
+            min_tip_filter=config["params"]["hifiasm_tip_contig_filter"],
         threads:
             config["params"]["threads"]
         log:
@@ -335,13 +356,13 @@ if ASSEMBLERS_CONFIG.get("hifiasm", False):
             (hifiasm -o {output.dir}/asm \
             {input} \
             --ont \
-            --rl-cut 400 \
+            --rl-cut {params.min_read_length} \
             --chem-c 1 \
             --chem-f 100 \
             -r 3 \
             -a 4 \
             -D 200 \
-            --ctg-n 5 \
+            --ctg-n {params.min_tip_filter} \
             -t {threads}) \
 
             gfatools gfa2fa {output.dir}/asm.bp.p_ctg.gfa > {output.fasta}
