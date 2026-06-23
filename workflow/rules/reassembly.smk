@@ -343,7 +343,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
         output:
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "hifiasm")),
             fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "hifiasm", "assembly.fasta"),
-            bench=os.path.join(BENCH_DIR, "primary", "hifiasm", "{sample}.tsv")
+            bench=os.path.join(BENCH_DIR, "secondary", "hifiasm", "{sample}.tsv")
         params:
             min_read_length=config["params"]["hifiasm_min_read_len"],
             min_tip_filter=config["params"]["hifiasm_tip_contig_filter"],
