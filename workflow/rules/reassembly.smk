@@ -350,7 +350,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
         threads:
             config["params"]["threads"]
         log:
-            os.path.join(LOG_DIR, "primary", "hifiasm", "{sample}.log")
+            os.path.join(LOG_DIR, "secondary", "hifiasm", "{sample}.log")
         shell:
             """
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
