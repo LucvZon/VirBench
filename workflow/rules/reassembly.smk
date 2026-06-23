@@ -251,7 +251,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             -l {params.min_overlap} \
             -e {params.min_coverage} \
             --node-len {params.min_node_length} \
-            --ctg-min-length {params.min_node_length} 2> {log}
+            --ctg-min-length {params.min_contig_length} 2> {log}
 
             wtpoa-cns -t {threads} -i {output.dir}/dbg.ctg.lay.gz -fo {output.fasta}) \
             || \
