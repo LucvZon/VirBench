@@ -21,6 +21,8 @@ def get_reassembly_fasta(wildcards):
         return os.path.join(REASSEMBLY_DIR, wildcards.sample, assembler, "Assembly.fasta")
     elif assembler == "miniasm":
         return os.path.join(REASSEMBLY_DIR, wildcards.sample, assembler, "final_assembly.fasta")
+    elif assembler == "hifiasm":
+        return os.path.join(REASSEMBLY_DIR, wildcards.sample, assembler, "assembly.fasta")
     # Add other assemblers here if needed in the future
 
 # Place assembly rules here
