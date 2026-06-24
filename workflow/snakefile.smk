@@ -20,7 +20,9 @@ ASSEMBLY_TYPES = ["primary", "secondary", "final"]
 # --- Define output directories ---
 RESULTS_DIR = "results"
 QC_DIR = os.path.join(RESULTS_DIR, "1_quality_control")
-READ_CLASSIFICATION_DIR = os.path.join(RESULTS_DIR, "2_read_classification")
+READ_CLASSIFICATION_DIR = os.path.join(RESULTS_DIR, "2.1_read_classification")
+CHIMERA_DIR = os.path.join(RESULTS_DIR, "2.2_chimera_filtering")
+DOWNSAMPLING_DIR = os.path.join(RESULTS_DIR, "2.3_downsampling")
 ASSEMBLY_DIR = os.path.join(RESULTS_DIR, "3_assemblies")
 REASSEMBLY_DIR = os.path.join(RESULTS_DIR, "4_reassemblies")
 CLUSTER_DIR = os.path.join(RESULTS_DIR, "5_clusters")
@@ -82,6 +84,8 @@ def get_assembly_fasta(wildcards):
         return os.path.join(ASSEMBLY_DIR, wildcards.sample, assembler, "Assembly.fasta")
     elif assembler == "miniasm":
         return os.path.join(ASSEMBLY_DIR, wildcards.sample, assembler, "final_assembly.fasta")
+    elif assembler == "hifiasm":
+        return os.path.join(ASSEMBLY_DIR, wildcards.sample, assembler, "assembly.fasta")
     # Add other assemblers here if needed in the future
 
 # --- Helper function to handle different assembly types ---
@@ -229,17 +233,11 @@ rule quality_control:
     log:
         os.path.join(LOG_DIR, "quality_control", "{sample}.log")
     shell:
-        """
-        fastplong -i {input} -o {output.fastq} \
-        --low_complexity_filter \
-        --complexity_threshold 60 \
-        --length_required 150 \
-        --qualified_quality_phred 10 \
-        --unqualified_percent_limit 35 \
-        --disable_adapter_trimming \
-        -j {output.json} -h {output.html} \
-        --thread {threads} &> {log}
-        """
+        "fastplong -i {input} -o {output.fastq} "
+        "--low_complexity_filter "
+        "--complexity_threshold 60 "
+        "--length_required 150 --qualified_quality_phred 10 -j {output.json} -h {output.html} "
+        "--unqualified_percent_limit 35 --disable_adapter_trimming --thread {threads} &> {log}"
 
 # Step 4: Classify reads with DIAMOND against a custom database
 rule classify_reads_diamond:
@@ -277,6 +275,92 @@ rule extract_target_reads:
         "awk '{{print $1}}' {input.ids} | sort -u > {output}.ids.txt 2> {log}; "
         "seqtk subseq {input.reads} {output}.ids.txt > {output} 2>> {log}"
 		
+		
+### EXPERIMENTAL STEPS ###
+
+rule scrub_chimera:
+    input:
+        target_reads=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+    output:
+        cleaned_reads=os.path.join(CHIMERA_DIR, "{sample}_cleaned_reads.fastq")
+    log:
+        os.path.join(LOG_DIR, "scrub_chimera", "{sample}.log")
+    threads:
+        config["params"]["threads"]
+    shell:
+        """
+        # Create a sample-specific temp directory and ID list to prevent parallel job collisions
+        TEMP_DIR="split_workdir_{wildcards.sample}"
+        ID_LIST="${{TEMP_DIR}}/chimeric_read_ids.txt"
+        
+        # Strictly remove any old temp dir to prevent seqkit warnings/file mixing, then create fresh
+        rm -rf "${{TEMP_DIR}}"
+        mkdir -p "${{TEMP_DIR}}"
+        > "${{ID_LIST}}"
+
+        echo "Splitting reads into chunks of 1000..." > {log}
+        # Added --force just to be absolutely safe
+        seqkit split --force -s 1000 {input.target_reads} -O "${{TEMP_DIR}}/" 2>> {log}
+
+        # Count total chunks
+        TOTAL_CHUNKS=$(ls "${{TEMP_DIR}}"/*.fastq 2>/dev/null | wc -l)
+        CURRENT=0
+
+        echo "Processing $TOTAL_CHUNKS chunks..." >> {log}
+
+        for chunk in "${{TEMP_DIR}}"/*.fastq; do
+            CURRENT=$((CURRENT + 1))
+            if (( CURRENT % 50 == 0 || CURRENT == 1 )); then
+                echo "Processing chunk $CURRENT / $TOTAL_CHUNKS..." >> {log}
+            fi
+            
+            # Map the FASTQ chunk directly against itself!
+            # ava-ont drops the useless + self-hits, but keeps the - chimeras
+            minimap2 -t {threads} -x ava-ont \
+                "$chunk" "$chunk" > "${{chunk}}.paf" 2>/dev/null
+            
+            # Extract chimeras directly
+            awk -F'\\t' '{{
+                if ($1 == $6 && $5 == "-" && $11 > 300) {{
+                    print $1
+                }}
+            }}' "${{chunk}}.paf" >> "${{ID_LIST}}"
+            
+        done
+        
+        echo "Chunk processing complete!" >> {log}
+
+        # Ensure the ID list is unique (If no chimeras found, touch ensures file exists)
+        sort -u "${{ID_LIST}}" -o "${{ID_LIST}}" || touch "${{ID_LIST}}"
+        
+        CHIMERA_COUNT=$(wc -l < "${{ID_LIST}}")
+        echo "Found $CHIMERA_COUNT chimeric reads." >> {log}
+
+        # Filter the original reads
+        echo "Filtering original FASTQ..." >> {log}
+        seqkit grep -v -f "${{ID_LIST}}" {input.target_reads} > {output.cleaned_reads} 2>> {log}
+
+        # Cleanup the massive temp directory
+        rm -rf "${{TEMP_DIR}}"
+
+        echo "Done! Cleaned reads saved to {output.cleaned_reads}" >> {log}
+        """
+        
+rule downsample:
+    input:
+        cleaned_reads=os.path.join(CHIMERA_DIR, "{sample}_cleaned_reads.fastq")
+    output:
+        downsampled_reads=os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
+    log:
+        os.path.join(LOG_DIR, "downsample", "{sample}.log")
+    threads:
+        config["params"]["threads"]
+    shell:
+        """
+        bbnorm.sh in={input.cleaned_reads} out={output.downsampled_reads} \
+        target=200 mindepth=2 threads={threads} &> {log}
+        """
+
 # --- ASSEMBLY RULES ---
 include: "rules/assemblers.smk"
 
@@ -518,7 +602,7 @@ rule calculate_stats_generic:
 rule map_reads_generic:
     input:
         contigs=get_assembly_by_type,
-        reads=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+        reads=os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
     output:
         temp(os.path.join(STATS_DIR, "reads_to_contigs", "{assembly_type}", "{sample}_{assembler}.bam"))
     threads:
@@ -615,7 +699,7 @@ rule run_checkv_generic:
 rule run_inspector:
     input:
         contigs=get_assembly_by_type,
-        reads=os.path.join(READ_CLASSIFICATION_DIR, "{sample}.target_reads.fastq")
+        reads=os.path.join(DOWNSAMPLING_DIR, "{sample}_norm_reads.fastq")
     output:
         small=os.path.join(STATS_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}", "small_scale_error.bed"),
         structural=os.path.join(STATS_DIR, "inspector", "{assembly_type}", "{sample}_{assembler}", "structural_error.bed"),
