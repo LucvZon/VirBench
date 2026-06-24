@@ -363,9 +363,9 @@ if ASSEMBLERS_CONFIG.get("hifiasm", False):
             -a 4 \
             -D 200 \
             --ctg-n {params.min_tip_filter} \
-            -t {threads}) \
+            -t {threads}) 2> {log}
 
-            gfatools gfa2fa {output.dir}/asm.bp.p_ctg.gfa > {output.fasta}
+            gfatools gfa2fa {output.dir}/asm.bp.p_ctg.gfa > {output.fasta} \
             || \
             (echo "Hifiasm failed for sample {wildcards.sample}, creating empty output. Check log for details." >> {log} && \
              touch {output.fasta})
