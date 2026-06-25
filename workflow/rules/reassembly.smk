@@ -374,7 +374,6 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             '
             """
 
-# Map original contigs to reassembled contigs
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
     rule map_contigs_to_reassembly:
         message:
@@ -383,24 +382,22 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             reassembled=get_reassembly_fasta,
             combined=os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
-            os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "combined_contigs_to_reassembly.bam")
+            paf=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "combined_contigs_to_reassembly.paf")
         threads:
             config["params"]["threads"]
         log:
             os.path.join(LOG_DIR, "contigs_to_reassembly", "{sample}_{assembler}.log")
         shell:
             """
-            # I don't want to grab get_assembly_fasta, I want to grab combined.fasta
-            minimap2 -ax asm20 -t {threads} {input.reassembled} {input.combined} \
-            | samtools sort -@ {threads} --output-fmt BAM -o {output}
+            minimap2 -x asm20 -t {threads} {input.reassembled} {input.combined} > {output.paf} 2> {log}
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
     rule extract_and_cluster:
         message:
-            "Extracting unmapped contigs and clustering them with MMseqs2"
+            "Extracting unmapped and significantly longer primary contigs, clustering them with MMseqs2"
         input:
-            bam=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "combined_contigs_to_reassembly.bam"),
+            paf=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "combined_contigs_to_reassembly.paf"),
             combined=os.path.join(ASSEMBLY_DIR, "{sample}", "combined", "combined_assemblies.fasta")
         output:
             read_ids=temp(os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "{sample}_unmapped_read_ids.txt")),
@@ -410,7 +407,8 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             bench=os.path.join(BENCH_DIR, "final", "{assembler}", "{sample}.tsv")
         params:
             out_prefix=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "cluster"),
-            tmp_dir=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "tmp")
+            tmp_dir=os.path.join(CLUSTER_DIR, "{sample}", "{assembler}", "tmp"),
+            length_threshold=1.1  # Rescue primary contig if it is >10% longer than secondary contig
         threads:
             config["params"]["threads"]
         log:
@@ -418,22 +416,48 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
         shell:
             """
             /usr/bin/time -f "s\\tmax_rss\\tmean_load\\n%e\\t%M\\t%P" -o {output.bench} \
-            bash -c '
-            # 1. Extract unmapped contigs
-            # -f 4 gets unmapped reads
-            samtools view -f 4 {input.bam} | cut -f1 | sort -u > {output.read_ids}
-
-            # Extract sequences (seqkit grep needs exact ID matches)
-            seqkit grep -f {output.read_ids} {input.combined} -o {output.unmapped}
-            
-            # 2. Cluster unmapped contigs
-            # Ensure the temp dir exists
+            bash -c "
             mkdir -p {params.tmp_dir}
 
-            # Command syntax: mmseqs easy-cluster <input> <output_prefix> <tmp_dir>
-            mmseqs easy-cluster {output.unmapped} {params.out_prefix} {params.tmp_dir} \
-            --min-seq-id 0.9 -c 0.8 --cov-mode 1 --remove-tmp-files 1 >> {log} 2>&1
-            '
+            # 1. Get ALL primary contig IDs (cut extracts just the ID, ignoring descriptions)
+            seqkit seq -n {input.combined} | cut -d ' ' -f 1 | sort > {params.tmp_dir}/all_primary.txt
+
+            # 2. Find primary contigs that mapped ADEQUATELY
+            # An adequate map = The Primary contig is NOT significantly longer than the Secondary contig
+            awk -F'\\t' -v thresh={params.length_threshold} '{{
+                qname = \\$1; qlen = \\$2; tlen = \\$7;
+                
+                # Keep track of the largest secondary contig this primary contig mapped to
+                if (!(qname in max_t) || tlen > max_t[qname]) {{
+                    max_t[qname] = tlen;
+                    q_len[qname] = qlen;
+                }}
+            }}
+            END {{
+                for (q in max_t) {{
+                    # If primary length is <= secondary length * 1.1, it is adequately mapped (DO NOT RESCUE)
+                    if (q_len[q] <= max_t[q] * thresh) {{
+                        print q
+                    }}
+                }}
+            }}' {input.paf} | sort -u > {params.tmp_dir}/adequately_mapped.txt
+
+            # 3. The contigs to rescue = ALL - ADEQUATELY_MAPPED
+            comm -23 {params.tmp_dir}/all_primary.txt {params.tmp_dir}/adequately_mapped.txt > {output.read_ids}
+
+            # 4. Extract sequences and Cluster
+            if [ -s {output.read_ids} ]; then
+                seqkit grep -f {output.read_ids} {input.combined} -o {output.unmapped}
+                
+                mmseqs easy-cluster {output.unmapped} {params.out_prefix} {params.tmp_dir} \
+                --min-seq-id 0.9 -c 0.8 --cov-mode 1 --remove-tmp-files 1 >> {log} 2>&1
+            else
+                echo 'No unmapped or rescued contigs found.' >> {log}
+                touch {output.unmapped}
+                touch {output.rep_seq}
+                touch {output.cluster_tsv}
+            fi
+            "
             """
 
 if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
