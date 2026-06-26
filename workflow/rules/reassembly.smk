@@ -159,7 +159,6 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "myloasm", "assembly_primary.fa"),
             bench=os.path.join(BENCH_DIR, "secondary", "myloasm", "{sample}.tsv")
         params:
-            min_coverage=config["params"]["myloasm_min_cov"],
             min_overlap=config["params"]["myloasm_min_overlap"],
             min_seq_id=config["params"]["myloasm_min_seq_id"]
         threads:
@@ -173,7 +172,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             (myloasm {input} \
             -o {output.dir} \
             --quality-value-cutoff {params.min_seq_id} \
-            --absolute-coverage-threshold {params.min_coverage} \
+            --absolute-coverage-threshold 2 \
             --min-ol {params.min_overlap} \
             -t {threads} 2> {log}) \
             || \
@@ -308,7 +307,6 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             bench=os.path.join(BENCH_DIR, "secondary", "miniasm", "{sample}.tsv")
         params:
             min_overlap=config["params"]["miniasm_min_overlap"],
-            min_coverage=config["params"]["miniasm_min_cov"],
             min_seq_id=config["params"]["miniasm_min_seq_id"]
         threads:
             config["params"]["threads"]
@@ -320,7 +318,7 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             bash -c '
             # Create draft assembly graph
             minimap2 -t {threads} -K 1m -x ava-ont {input} {input} \
-            | miniasm -s {params.min_overlap} -c {params.min_coverage} -i {params.min_seq_id} -f {input} - > {output.dir}/raw_assembly.gfa 2> {log}
+            | miniasm -s {params.min_overlap} -c 2 -i {params.min_seq_id} -f {input} - > {output.dir}/raw_assembly.gfa 2> {log}
 
             # --- ROBUSTNESS CHECK ---
             if [ -s {output.dir}/raw_assembly.gfa ]; then
@@ -344,9 +342,6 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             dir=directory(os.path.join(REASSEMBLY_DIR, "{sample}", "hifiasm")),
             fasta=os.path.join(REASSEMBLY_DIR, "{sample}", "hifiasm", "assembly.fasta"),
             bench=os.path.join(BENCH_DIR, "secondary", "hifiasm", "{sample}.tsv")
-        params:
-            min_read_length=config["params"]["hifiasm_min_read_len"],
-            min_tip_filter=config["params"]["hifiasm_tip_contig_filter"],
         threads:
             config["params"]["threads"]
         log:
@@ -357,14 +352,11 @@ if REASSEMBLY_CONFIG.get("reassemble_contigs", False):
             bash -c '
             (hifiasm -o {output.dir}/asm \
             {input} \
-            --ont \
-            --rl-cut {params.min_read_length} \
-            --chem-c 1 \
-            --chem-f 100 \
             -r 3 \
             -a 4 \
             -D 200 \
-            --ctg-n {params.min_tip_filter} \
+            -n 2 \
+            --ctg-n 2 \
             -t {threads}) 2> {log}
 
             gfatools gfa2fa {output.dir}/asm.bp.p_ctg.gfa > {output.fasta} \
