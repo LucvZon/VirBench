@@ -24,6 +24,7 @@ This workflow is designed to help researchers evaluate which assembly tool is mo
 Current supported assemblers:
 - [metaFlye](https://github.com/mikolmogorov/Flye)
 - [Canu](https://github.com/marbl/canu)
+- [Hifiasm](https://github.com/chhylp123/hifiasm)
 - [Raven](https://github.com/lbcb-sci/raven)
 - [PenguiN](https://github.com/soedinglab/plass)
 - [Myloasm](https://github.com/bluenote-1577/myloasm)
