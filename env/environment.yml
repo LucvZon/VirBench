@@ -23,6 +23,7 @@ dependencies:
   - bioconda::bbmap
   - bioconda::checkv
   - bioconda::racon
+  - bioconda::hifiasm
   - bioconda::gfatools
   - bioconda::snakemake
   - bioconda::mmseqs2
