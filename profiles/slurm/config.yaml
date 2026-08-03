@@ -1,0 +1,97 @@
+# profiles/slurm/config.yaml
+
+# A default profile that can be used to run the snakemake workflow with Slurm!
+# Example usage:
+# snakemake --snakefile workflow/snakefile.smk --profile profiles/slurm
+
+executor: slurm
+jobs: 64
+keep-going: true
+printshellcmds: true
+
+# --- Default Resources ---
+default-resources:
+  - slurm_partition="PARTITION_NAME" # Fill in your partition name
+  - slurm_account="ACCOUNT_NAME" # Fill in your account name
+  - runtime=60                  # Default to 1 hour
+  - mem_mb=8000                 # Default to 8 GB RAM
+
+# --- Rule-Specific Overrides ---
+set-resources:
+  # Primary Assemblers
+  assemble_metaflye:
+    mem_mb: 64000
+    runtime: 240
+  assemble_canu:
+    mem_mb: 64000
+    runtime: 240
+  assemble_raven:
+    mem_mb: 64000
+    runtime: 240
+  assemble_shasta:
+    mem_mb: 64000
+    runtime: 240
+  assemble_metamdbg:
+    mem_mb: 64000
+    runtime: 240
+  assemble_penguin:
+    mem_mb: 64000
+    runtime: 240
+  assemble_myloasm:
+    mem_mb: 64000
+    runtime: 240
+  assemble_miniasm:
+    mem_mb: 128000
+    runtime: 240
+  assemble_wtdbg2:
+    mem_mb: 64000
+    runtime: 240
+  assemble_hifiasm:
+    mem_mb: 64000
+    runtime: 240
+
+  # Re-assemblies (Usually faster, but still memory intensive)
+  reassemble_metaflye:
+    mem_mb: 32000
+    runtime: 240
+  reassemble_canu:
+    mem_mb: 32000
+    runtime: 240
+  ressemble_raven:
+    mem_mb: 32000
+    runtime: 240
+  reassemble_shasta:
+    mem_mb: 32000
+    runtime: 240
+  reassemble_metamdbg:
+    mem_mb: 32000
+    runtime: 240
+  reassemble_penguin:
+    mem_mb: 32000
+    runtime: 240
+  reassemble_myloasm:
+    mem_mb: 32000
+    runtime: 240
+  reassemble_miniasm:
+    mem_mb: 64000
+    runtime: 240
+  reassemble_wtdbg2:
+    mem_mb: 32000
+    runtime: 240
+  reassemble_hifiasm:
+    mem_mb: 32000
+    runtime: 240
+    
+  # Heavy Mapping / Processing Steps
+  classify_reads_diamond:
+    mem_mb: 128000
+    runtime: 240
+  downsample:
+    mem_mb: 32000
+    runtime: 120
+  extract_and_cluster:
+    mem_mb: 16000
+    runtime: 60
+  run_checkv_generic:
+    mem_mb: 32000
+    runtime: 120
