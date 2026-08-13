@@ -230,6 +230,7 @@ rule create_accuracy_overview:
             # Basic Stats
             "Genome fraction (%)", "Duplication ratio", 
             "Total length", "Total aligned length", "Reference length",
+            "N50", "Largest contig", "# contigs",
             "NA50", "NGA50", "LGA50", "auNGA", 
             "# Unaligned contigs",
             # Errors / Misassemblies
@@ -307,6 +308,9 @@ rule create_accuracy_overview:
                         "NGA50": get_val(m_row, 'NGA50'),
                         "LGA50": get_val(m_row, 'LGA50'),
                         "auNGA": get_val(m_row, 'auNGA'),
+                        "N50": get_val(m_row, 'N50'),
+                        "Largest contig": get_val(m_row, 'Largest contig'),
+                        "# contigs": get_val(m_row, '# contigs'),
 
                         # --- From transposed_report_misassemblies.tsv ---
                         # Logic handles cases where # Misassemblies is in either file
