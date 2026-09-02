@@ -6,6 +6,7 @@ channels:
   - nodefaults
 dependencies:
   - python==3.12.11
+  - bioconda::pysam==0.23.3
   - bioconda::diamond==2.2.25
   - bioconda::flye==2.9.6
   - bioconda::plass==5.cf8933
