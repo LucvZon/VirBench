@@ -5,6 +5,7 @@ channels:
   - nodefaults
 dependencies:
   - python
+  - bioconda::pysam
   - bioconda::diamond>=2.0.10 # Requires >=2.0.10 for '--fast' sensitivity
   - bioconda::flye
   - bioconda::plass
