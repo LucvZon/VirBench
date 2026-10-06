@@ -13,9 +13,16 @@ configfile: "config/virbench.yaml"
 # --- Global Variables ---
 SAMPLES = list(config["samples"].keys())
 ASSEMBLERS_CONFIG = config["assemblers"]
-REASSEMBLY_CONFIG = config["reassembly"]
 ACTIVE_ASSEMBLERS = [asm for asm, active in ASSEMBLERS_CONFIG.items() if active]
-ASSEMBLY_TYPES = ["primary", "secondary", "final"]
+
+# Check if reassembly is enabled in the config
+REASSEMBLY_CONFIG = config.get("reassembly", {})
+DO_REASSEMBLY = REASSEMBLY_CONFIG.get("reassemble_contigs", False)
+
+if DO_REASSEMBLY:
+    ASSEMBLY_TYPES = ["primary", "secondary", "final"]
+else:
+    ASSEMBLY_TYPES = ["primary"]
 
 # --- Define output directories ---
 RESULTS_DIR = "results"
@@ -381,7 +388,8 @@ rule combine_assemblies:
         """
 
 # --- REASSEMBLY RULES ---
-include: "rules/reassembly.smk"
+if DO_REASSEMBLY:
+    include: "rules/reassembly.smk"
 
 # --- POST-ASSEMBLY PROCESSING ---
 
